@@ -36,20 +36,37 @@ export class AnthropicProvider implements LLMProvider {
 
     const payload: any = {
       model: this.profile.model || 'claude-3-7-sonnet-20250219',
-      max_tokens: request.maxTokens ?? this.profile.maxTokens ?? 3000,
-      temperature: request.temperature ?? this.profile.temperature ?? 0.3,
+      max_tokens: request.maxTokens ?? this.profile.maxTokens ?? 8192,
       messages: userAndAssistantMessages,
     };
+
+    if (request.temperature !== undefined || this.profile.temperature !== undefined) {
+      payload.temperature = request.temperature ?? this.profile.temperature;
+    }
 
     if (systemMessage) {
       payload.system = systemMessage;
     }
 
-    const timeout = this.profile.timeoutMs || 60000;
+    const timeout = this.profile.timeoutMs || 300000;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
+    let isTimedOut = false;
+    const timer = setTimeout(() => {
+      isTimedOut = true;
+      try {
+        controller.abort(new Error(`Claude API 请求超时 (${Math.round(timeout / 1000)} 秒)`));
+      } catch {
+        controller.abort();
+      }
+    }, timeout);
 
-    const onAbort = () => controller.abort();
+    const onAbort = () => {
+      try {
+        controller.abort(request.signal?.reason || new Error('请求已取消'));
+      } catch {
+        controller.abort();
+      }
+    };
     if (request.signal) {
       request.signal.addEventListener('abort', onAbort);
     }
@@ -82,6 +99,15 @@ export class AnthropicProvider implements LLMProvider {
           completionTokens: data.usage?.output_tokens,
         },
       };
+    } catch (err: any) {
+      if (isTimedOut) {
+        throw new Error(`Claude 请求超时 (${Math.round(timeout / 1000)} 秒)，当前文稿篇幅较大或模型响应缓慢，请稍后重试或在设置中延长超时时间。`);
+      }
+      if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
+        const customReason = request.signal?.reason?.message || (typeof request.signal?.reason === 'string' ? request.signal?.reason : null);
+        throw new Error(customReason || '请求已被取消或超时中断');
+      }
+      throw err;
     } finally {
       clearTimeout(timer);
       if (request.signal) {
@@ -102,11 +128,14 @@ export class AnthropicProvider implements LLMProvider {
 
     const payload: any = {
       model: this.profile.model || 'claude-3-7-sonnet-20250219',
-      max_tokens: request.maxTokens ?? this.profile.maxTokens ?? 3000,
-      temperature: request.temperature ?? this.profile.temperature ?? 0.3,
+      max_tokens: request.maxTokens ?? this.profile.maxTokens ?? 8192,
       messages: userAndAssistantMessages,
       stream: true,
     };
+
+    if (request.temperature !== undefined || this.profile.temperature !== undefined) {
+      payload.temperature = request.temperature ?? this.profile.temperature;
+    }
 
     if (systemMessage) {
       payload.system = systemMessage;

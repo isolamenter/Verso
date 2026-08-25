@@ -37,20 +37,43 @@ export class OllamaProvider implements LLMProvider {
       model: this.profile.model || 'qwen2.5:32b',
       messages: request.messages,
       stream: false,
-      options: {
-        temperature: request.temperature ?? this.profile.temperature ?? 0.2,
-      },
     };
+
+    const options: any = {};
+    if (request.temperature !== undefined || this.profile.temperature !== undefined) {
+      options.temperature = request.temperature ?? this.profile.temperature;
+    }
+    if (request.maxTokens !== undefined || this.profile.maxTokens !== undefined) {
+      options.num_predict = request.maxTokens ?? this.profile.maxTokens;
+    }
+
+    if (Object.keys(options).length > 0) {
+      payload.options = options;
+    }
 
     if (request.responseFormat === 'json_object') {
       payload.format = 'json';
     }
 
-    const timeout = this.profile.timeoutMs || 60000;
+    const timeout = this.profile.timeoutMs || 300000;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
+    let isTimedOut = false;
+    const timer = setTimeout(() => {
+      isTimedOut = true;
+      try {
+        controller.abort(new Error(`Ollama 请求超时 (${Math.round(timeout / 1000)} 秒)`));
+      } catch {
+        controller.abort();
+      }
+    }, timeout);
 
-    const onAbort = () => controller.abort();
+    const onAbort = () => {
+      try {
+        controller.abort(request.signal?.reason || new Error('请求已取消'));
+      } catch {
+        controller.abort();
+      }
+    };
     if (request.signal) {
       request.signal.addEventListener('abort', onAbort);
     }
@@ -76,6 +99,15 @@ export class OllamaProvider implements LLMProvider {
           completionTokens: data.eval_count,
         },
       };
+    } catch (err: any) {
+      if (isTimedOut) {
+        throw new Error(`Ollama 本地模型请求超时 (${Math.round(timeout / 1000)} 秒)，本地推理大文本较耗时，请稍后重试或在设置中延长超时时间。`);
+      }
+      if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
+        const customReason = request.signal?.reason?.message || (typeof request.signal?.reason === 'string' ? request.signal?.reason : null);
+        throw new Error(customReason || '请求已被取消或超时中断');
+      }
+      throw err;
     } finally {
       clearTimeout(timer);
       if (request.signal) {
@@ -93,10 +125,19 @@ export class OllamaProvider implements LLMProvider {
       model: this.profile.model || 'qwen2.5:32b',
       messages: request.messages,
       stream: true,
-      options: {
-        temperature: request.temperature ?? this.profile.temperature ?? 0.2,
-      },
     };
+
+    const options: any = {};
+    if (request.temperature !== undefined || this.profile.temperature !== undefined) {
+      options.temperature = request.temperature ?? this.profile.temperature;
+    }
+    if (request.maxTokens !== undefined || this.profile.maxTokens !== undefined) {
+      options.num_predict = request.maxTokens ?? this.profile.maxTokens;
+    }
+
+    if (Object.keys(options).length > 0) {
+      payload.options = options;
+    }
 
     if (request.responseFormat === 'json_object') {
       payload.format = 'json';

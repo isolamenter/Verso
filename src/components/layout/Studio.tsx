@@ -149,18 +149,19 @@ export const Studio: React.FC<StudioProps> = ({
       </div>
 
       {/* Tabs — underline index, cinnabar marks the active editorial tab */}
-      <div className="flex items-center px-2 py-0 border-b border-line bg-paper overflow-x-auto scrollbar-none">
+      <div className="grid grid-cols-5 border-b border-line bg-paper">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => onTabChange(id)}
-            className={`relative flex items-center space-x-1 px-3 py-2.5 text-xs transition-colors font-serif shrink-0 border-b-2 ${
+            className={`relative flex items-center justify-center space-x-1 py-2.5 px-0.5 text-xs transition-colors font-serif border-b-2 whitespace-nowrap ${
               activeTab === id
                 ? 'border-cinnabar text-ink font-medium'
                 : 'border-transparent text-ink-muted hover:text-ink'
             }`}
+            title={label}
           >
-            <Icon className="w-3.5 h-3.5" />
+            <Icon className="w-3.5 h-3.5 shrink-0" />
             <span>{label}</span>
           </button>
         ))}

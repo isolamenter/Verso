@@ -133,7 +133,7 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
                 className={`p-2 rounded cursor-pointer transition-colors flex items-center justify-between ${
                   tmpl.id === (currentTemplate?.id || '')
                     ? 'bg-paper-sunken text-ink font-semibold'
-                    : 'hover:bg-paper-sunken dark:hover:bg-[#221F1B] text-ink-muted'
+                    : 'hover:bg-paper-sunken text-ink-muted'
                 }`}
               >
                 <span className="truncate">{tmpl.name}</span>

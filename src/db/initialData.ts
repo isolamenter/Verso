@@ -85,8 +85,6 @@ export const DEFAULT_PROFILES: ModelProfile[] = [];
 export const DEFAULT_SETTINGS: AppSettings = {
   activeProfileId: '',
   profiles: [],
-  keyStorageMode: 'session',
-  localOnlyMode: false,
   autoSaveIntervalMs: 1500,
   autoSnapshotIntervalMs: 30000,
   typewriterMode: false,

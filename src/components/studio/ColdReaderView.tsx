@@ -61,7 +61,7 @@ export const ColdReaderView: React.FC<ColdReaderViewProps> = ({
           {/* Section 1: What I Read & What Happened */}
           <div className="p-3 rounded bg-paper border border-line">
             <div className="flex items-center space-x-1.5 pb-1.5 border-b border-line text-ink font-bold">
-              <Eye className="w-3.5 h-3.5 text-[#5D4037]" />
+              <Eye className="w-3.5 h-3.5 text-cinnabar" />
               <span>1. 我实际读到的事实与感知</span>
             </div>
             <p className="mt-2 text-ink-muted">{report.whatIRead}</p>
@@ -69,7 +69,7 @@ export const ColdReaderView: React.FC<ColdReaderViewProps> = ({
 
           <div className="p-3 rounded bg-paper border border-line">
             <div className="flex items-center space-x-1.5 pb-1.5 border-b border-line text-ink font-bold">
-              <Compass className="w-3.5 h-3.5 text-[#455A64]" />
+              <Compass className="w-3.5 h-3.5 text-ink-muted" />
               <span>2. 我认为发生了什么 (情节与动作)</span>
             </div>
             <p className="mt-2 text-ink-muted">{report.whatHappened}</p>
@@ -78,7 +78,7 @@ export const ColdReaderView: React.FC<ColdReaderViewProps> = ({
           {/* Section 2: Character Dynamics */}
           <div className="p-3 rounded bg-paper border border-line">
             <div className="flex items-center space-x-1.5 pb-1.5 border-b border-line text-ink font-bold">
-              <Users className="w-3.5 h-3.5 text-[#00695C]" />
+              <Users className="w-3.5 h-3.5 text-ink-muted" />
               <span>3. 我理解的人物关系与权力流动</span>
             </div>
             <p className="mt-2 text-ink-muted">{report.characterDynamics}</p>
@@ -87,7 +87,7 @@ export const ColdReaderView: React.FC<ColdReaderViewProps> = ({
           {/* Section 3: Themes & Implications */}
           <div className="p-3 rounded bg-paper border border-line">
             <div className="flex items-center space-x-1.5 pb-1.5 border-b border-line text-ink font-bold">
-              <Sparkles className="w-3.5 h-3.5 text-[#6A1B9A]" />
+              <Sparkles className="w-3.5 h-3.5 text-cinnabar" />
               <span>4. 我感受到的主题与隐秘暗示</span>
             </div>
             <div className="mt-2 space-y-1.5">

@@ -1,13 +1,13 @@
 import React, { useState, useRef } from 'react';
 import type { Project, Manuscript, Scene } from '../../types';
 import {
-  Book,
   Plus,
   Trash2,
   ChevronDown,
   ChevronRight,
   Users,
   Eye,
+  BookOpen,
   History,
   PanelLeftClose,
   Sparkles,
@@ -15,6 +15,7 @@ import {
   Check,
   Upload
 } from 'lucide-react';
+import { VersoLogo } from './VersoLogo';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -33,6 +34,7 @@ interface SidebarProps {
   onDeleteScene: (sceneId: string) => void;
   onRenameScene: (sceneId: string, newTitle: string) => void;
   onOpenRevisions: () => void;
+  onOpenSynopsis?: () => void;
   onOpenCharacterNotes: () => void;
   onOpenMotifs: () => void;
   onOpenPromptLibrary: () => void;
@@ -56,6 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeleteScene,
   onRenameScene,
   onOpenRevisions,
+  onOpenSynopsis,
   onOpenCharacterNotes,
   onOpenMotifs,
   onOpenPromptLibrary,
@@ -137,7 +140,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onClick={() => setIsManuscriptsDropdownOpen(!isManuscriptsDropdownOpen)}
             className="flex items-center space-x-2 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity flex-1"
           >
-            <Book className="w-4 h-4 text-cinnabar shrink-0" />
+            <VersoLogo size={18} />
             <div className="overflow-hidden">
               <div className="flex items-center space-x-1">
                 <h1 className="text-xs font-bold font-serif text-ink truncate">
@@ -151,13 +154,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1 text-ink-muted hover:text-ink rounded transition-colors ml-1"
-            title="收起侧栏 (Cmd/Ctrl + B)"
-          >
-            <PanelLeftClose className="w-4 h-4" />
-          </button>
+          <div className="flex items-center space-x-1 shrink-0 ml-1">
+            {onOpenImportAssistant && (
+              <button
+                onClick={onOpenImportAssistant}
+                disabled={!manuscript}
+                className="px-2 py-0.5 bg-cinnabar/10 hover:bg-cinnabar/20 text-cinnabar border border-cinnabar/20 rounded text-[10px] font-medium flex items-center space-x-1 transition-colors disabled:opacity-30"
+                title="全篇 AI 文学建档（提炼全书梗概、人物小传、意象网络与智能分场）"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>AI 建档</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 text-ink-muted hover:text-ink rounded transition-colors"
+              title="收起侧栏 (Cmd/Ctrl + B)"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Manuscript Switcher & Creator Dropdown */}
@@ -367,21 +383,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {isNotesExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
               <span>文学备忘</span>
             </button>
-            {onOpenImportAssistant && (
-              <button
-                onClick={onOpenImportAssistant}
-                disabled={!manuscript}
-                className="text-[10px] text-cinnabar hover:text-cinnabar-strong flex items-center space-x-0.5 disabled:opacity-30"
-                title="通过 AI 一键提取人物、意象与分场建议"
-              >
-                <Sparkles className="w-3 h-3" />
-                <span>AI 建档</span>
-              </button>
-            )}
           </div>
 
           {isNotesExpanded && (
             <div className="mt-1 space-y-0.5">
+              <button
+                onClick={onOpenSynopsis}
+                disabled={!manuscript}
+                className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-left text-ink-muted hover:bg-paper-sunken/50 rounded transition-colors disabled:opacity-40"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-cinnabar" />
+                <span>故事梗概与主题</span>
+                <span className="ml-auto text-[10px] font-mono text-ink-faint">
+                  {manuscript?.synopsis || manuscript?.notes ? '已设' : '未设'}
+                </span>
+              </button>
+
               <button
                 onClick={onOpenCharacterNotes}
                 disabled={!manuscript}

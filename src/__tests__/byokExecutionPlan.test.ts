@@ -4,7 +4,11 @@ import {
   DEFAULT_PROFILES
 } from '../db/initialData';
 import { createLLMProvider } from '../providers/factory';
-import { buildLiteraryContext, buildColdReaderIsolatedContext } from '../utils/contextBuilder';
+import {
+  buildLiteraryContext,
+  buildColdReaderIsolatedContext,
+  resolveEffectiveContextConfig,
+} from '../utils/contextBuilder';
 import { buildCritiquePrompt } from '../prompts/critique';
 import { buildColdReaderPrompt } from '../prompts/coldReader';
 import { buildIntentComparePrompt } from '../prompts/intentCompare';
@@ -35,7 +39,7 @@ describe('BYOK Execution Plan & Security Architecture', () => {
       temperature: 0.2,
       maxTokens: 3000,
     };
-    const deepseekProvider = createLLMProvider(deepseekProf, false, 'sk-test-deepseek-key');
+    const deepseekProvider = createLLMProvider(deepseekProf, 'sk-test-deepseek-key');
     expect(deepseekProvider.name).toBe(deepseekProf.name);
 
     const claudeProf: ModelProfile = {
@@ -46,7 +50,7 @@ describe('BYOK Execution Plan & Security Architecture', () => {
       temperature: 0.3,
       maxTokens: 4000,
     };
-    const claudeProvider = createLLMProvider(claudeProf, false, 'sk-ant-api03-test-key');
+    const claudeProvider = createLLMProvider(claudeProf, 'sk-ant-api03-test-key');
     expect(claudeProvider.name).toBe(claudeProf.name);
 
     const geminiProf: ModelProfile = {
@@ -57,7 +61,7 @@ describe('BYOK Execution Plan & Security Architecture', () => {
       temperature: 0.3,
       maxTokens: 3000,
     };
-    const geminiProvider = createLLMProvider(geminiProf, false, 'AIzaSyTestGeminiKey');
+    const geminiProvider = createLLMProvider(geminiProf, 'AIzaSyTestGeminiKey');
     expect(geminiProvider.name).toBe(geminiProf.name);
 
     const ollamaProf: ModelProfile = {
@@ -69,36 +73,8 @@ describe('BYOK Execution Plan & Security Architecture', () => {
       temperature: 0.2,
       maxTokens: 2048,
     };
-    const ollamaProvider = createLLMProvider(ollamaProf, true);
+    const ollamaProvider = createLLMProvider(ollamaProf);
     expect(ollamaProvider.name).toBe(ollamaProf.name);
-  });
-
-  it('should enforce Local-Only mode security boundaries', () => {
-    const deepseekProf: ModelProfile = {
-      id: 'prof-deepseek',
-      name: 'DeepSeek',
-      providerType: 'deepseek',
-      model: 'deepseek-chat',
-      baseURL: 'https://api.deepseek.com/v1',
-      temperature: 0.2,
-      maxTokens: 3000,
-    };
-    expect(() => createLLMProvider(deepseekProf, true, 'sk-test')).toThrow(
-      /纯本地隐私模式/
-    );
-
-    const maliciousOllama: ModelProfile = {
-      id: 'prof-evil-ollama',
-      name: 'External Ollama',
-      providerType: 'ollama',
-      model: 'qwen2.5',
-      baseURL: 'https://external-leak-server.com/api',
-      temperature: 0.2,
-      maxTokens: 2000,
-    };
-    expect(() => createLLMProvider(maliciousOllama, true)).toThrow(
-      /安全拦截：纯本地模式下仅允许连接本地回环端点/
-    );
   });
 
   it('should construct and parse Prompt pipelines correctly for all literary lenses and tools', () => {
@@ -217,5 +193,77 @@ describe('BYOK Execution Plan & Security Architecture', () => {
     });
     const parsedVersion = parseVersionCompareResponse(sampleVersionJson, '版本A', '版本B', '文本A', '文本B');
     expect(parsedVersion.literaryTradeoffSummary).toBe('建议采用B');
+  });
+
+  it('should enforce contextPolicy from ModelProfile when building execution prompt context', () => {
+    const testManuscript: Manuscript = {
+      id: 'manu-policy',
+      projectId: 'proj-policy',
+      title: '策略测试书稿',
+      genre: 'novel',
+      synopsis: '大纲概要',
+      characters: [{ id: 'c1', name: '角色1', role: '主角', notes: '测试小传' }],
+      motifs: [{ id: 'm1', name: '意象1', description: '测试意象' }],
+      notes: '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    const testScenes: Scene[] = [
+      {
+        id: 's1',
+        manuscriptId: 'manu-policy',
+        title: '第1场',
+        order: 1,
+        content: '前一场景文本',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+      {
+        id: 's2',
+        manuscriptId: 'manu-policy',
+        title: '第2场',
+        order: 2,
+        content: '当前场景文本。选中的文段在此。',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    ];
+
+    const uiConfig = {
+      includeSelectedText: true,
+      includeCurrentScene: true,
+      includePreviousScene: true,
+      includeCharacterNotes: true,
+      includeMotifs: true,
+      includeEntireManuscript: true,
+    };
+
+    // 1. When profile has selection_only policy, it restricts all extra context
+    const selectionOnlyConfig = resolveEffectiveContextConfig(uiConfig, 'selection_only');
+    const builtSelection = buildLiteraryContext(
+      selectionOnlyConfig,
+      testManuscript,
+      testScenes,
+      testScenes[1],
+      '选中的文段在此。'
+    );
+    expect(builtSelection.formattedPromptString).toContain('选中的文段在此。');
+    expect(builtSelection.formattedPromptString).not.toContain('前一场景文本');
+    expect(builtSelection.formattedPromptString).not.toContain('角色1');
+    expect(builtSelection.formattedPromptString).not.toContain('意象1');
+
+    // 2. When profile has current_scene_only policy
+    const sceneOnlyConfig = resolveEffectiveContextConfig(uiConfig, 'current_scene_only');
+    const builtSceneOnly = buildLiteraryContext(
+      sceneOnlyConfig,
+      testManuscript,
+      testScenes,
+      testScenes[1],
+      '选中的文段在此。'
+    );
+    expect(builtSceneOnly.formattedPromptString).toContain('当前场景文本');
+    expect(builtSceneOnly.formattedPromptString).not.toContain('前一场景文本');
+    expect(builtSceneOnly.formattedPromptString).not.toContain('角色1');
   });
 });

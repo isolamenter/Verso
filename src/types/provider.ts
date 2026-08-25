@@ -15,7 +15,15 @@ export type TaskBindingType =
   | 'ask'
   | 'local_privacy';
 
-export type ApiKeyStorageMode = 'session' | 'encrypted_local';
+export type ApiKeyStorageMode = 'session' | 'encrypted_local' | 'local';
+
+export type ContextPolicy =
+  | 'ui_default'
+  | 'selection_only'
+  | 'current_scene_only'
+  | 'scene_and_notes'
+  | 'scene_and_preceding'
+  | 'full_manuscript';
 
 export interface ModelProfile {
   id: string;
@@ -24,10 +32,10 @@ export interface ModelProfile {
   model: string;
   baseURL?: string;
   apiKey?: string;
-  temperature: number;
-  maxTokens: number;
+  temperature?: number;
+  maxTokens?: number;
   systemPrompt?: string;
-  contextPolicy?: string;
+  contextPolicy?: ContextPolicy;
   timeoutMs?: number;
   isDefault?: boolean;
   taskBinding?: TaskBindingType;
@@ -69,8 +77,8 @@ export interface LLMProvider {
 export interface AppSettings {
   activeProfileId: string;
   profiles: ModelProfile[];
-  keyStorageMode: ApiKeyStorageMode;
-  localOnlyMode: boolean;
+  keyStorageMode?: ApiKeyStorageMode;
+  localOnlyMode?: boolean;
   autoSaveIntervalMs: number;
   autoSnapshotIntervalMs: number;
   typewriterMode: boolean;

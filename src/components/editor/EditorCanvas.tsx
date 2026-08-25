@@ -310,6 +310,8 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
         setIsSearchOpen(true);
       }
       if (e.key === 'Escape' && isSearchOpen) {
+        e.preventDefault();
+        e.stopPropagation();
         setIsSearchOpen(false);
       }
     };

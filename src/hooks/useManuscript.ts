@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { db, initDatabase } from '../db';
 import type { Project, Manuscript, Scene, AppSettings, CharacterItem, MotifItem } from '../types';
 import { DEFAULT_SETTINGS } from '../db/initialData';
-import { calculateEditorStats, computeCharacterDiff } from '../utils/diff';
+import { calculateEditorStats } from '../utils/diff';
 import { extractPlainText } from '../utils/textProjection';
 import { parseUploadedFile } from '../utils/fileImporter';
 
@@ -162,32 +162,23 @@ export function useManuscript() {
         }
       }, settings.autoSaveIntervalMs || 1500);
 
-      // 2. Intelligent Literary Revision Snapshot on typing pause (30s) using real diff calculation
+      // 2. Intelligent Literary Revision Snapshot on typing pause (30s) purely time-debounced
       if (snapshotTimerRef.current) clearTimeout(snapshotTimerRef.current);
       snapshotTimerRef.current = setTimeout(async () => {
         const lastSaved = lastSnapshotMapRef.current[currentId] || '';
-        const lastSavedPlain = extractPlainText(lastSaved);
         const newContentPlain = extractPlainText(newContent);
 
         if (newContent !== lastSaved) {
-          const diffTokens = computeCharacterDiff(lastSavedPlain, newContentPlain);
-          const changedChars = diffTokens.reduce(
-            (acc, t) => (t.type !== 'equal' ? acc + t.text.length : acc),
-            0
-          );
-
-          if (changedChars >= 20 || lastSavedPlain === '') {
-            lastSnapshotMapRef.current[currentId] = newContent;
-            await db.revisions.add({
-              id: `rev-auto-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              sceneId: currentId,
-              timestamp: Date.now(),
-              description: `写作会话停顿自动快照 (~${newContentPlain.length} 字)`,
-              changeType: 'manual_edit',
-              content: newContent,
-              characterCount: newContentPlain.length,
-            });
-          }
+          lastSnapshotMapRef.current[currentId] = newContent;
+          await db.revisions.add({
+            id: `rev-auto-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            sceneId: currentId,
+            timestamp: Date.now(),
+            description: `写作会话停顿自动快照 (~${newContentPlain.length} 字)`,
+            changeType: 'manual_edit',
+            content: newContent,
+            characterCount: newContentPlain.length,
+          });
         }
       }, settings.autoSnapshotIntervalMs || 30000);
     },
@@ -416,6 +407,7 @@ export function useManuscript() {
       targetManuscriptId: string,
       data: {
         synopsis?: string;
+        notes?: string;
         characters?: CharacterItem[];
         motifs?: MotifItem[];
         sceneSplits?: { title: string; content: string; summary?: string }[];
@@ -432,6 +424,10 @@ export function useManuscript() {
         updatedManu.synopsis = data.synopsis.trim();
       }
 
+      if (data.notes !== undefined && data.notes.trim()) {
+        updatedManu.notes = data.notes.trim();
+      }
+
       if (data.characters && data.characters.length > 0) {
         const existingNames = new Set(targetManu.characters.map((c) => c.name.toLowerCase()));
         const newChars = data.characters.filter((c) => !existingNames.has(c.name.toLowerCase()));
@@ -446,7 +442,7 @@ export function useManuscript() {
 
       await updateManuscript(updatedManu);
 
-      // If scene splits are provided and there is more than 1 scene
+      // If scene splits are explicitly provided and selected
       if (data.sceneSplits && data.sceneSplits.length > 1) {
         await flushAutosave();
 
@@ -455,35 +451,32 @@ export function useManuscript() {
           .equals(targetManuscriptId)
           .sortBy('order');
 
-        // If only 1 scene in manuscript (e.g. initial imported full text), replace with split scenes
-        if (currentManuScenes.length <= 1) {
-          for (const s of currentManuScenes) {
-            await db.scenes.delete(s.id);
-            delete lastSnapshotMapRef.current[s.id];
-          }
+        for (const s of currentManuScenes) {
+          await db.scenes.delete(s.id);
+          delete lastSnapshotMapRef.current[s.id];
+        }
 
-          const newCreatedScenes: Scene[] = [];
-          for (let i = 0; i < data.sceneSplits.length; i++) {
-            const split = data.sceneSplits[i];
-            const newScene: Scene = {
-              id: `scene-${Date.now()}-${i}`,
-              manuscriptId: targetManuscriptId,
-              title: split.title || `第 ${i + 1} 场`,
-              order: i + 1,
-              content: split.content,
-              summary: split.summary,
-              createdAt: Date.now() + i,
-              updatedAt: Date.now() + i,
-            };
-            await db.scenes.add(newScene);
-            newCreatedScenes.push(newScene);
-            lastSnapshotMapRef.current[newScene.id] = newScene.content;
-          }
+        const newCreatedScenes: Scene[] = [];
+        for (let i = 0; i < data.sceneSplits.length; i++) {
+          const split = data.sceneSplits[i];
+          const newScene: Scene = {
+            id: `scene-${Date.now()}-${i}`,
+            manuscriptId: targetManuscriptId,
+            title: split.title || `第 ${i + 1} 场`,
+            order: i + 1,
+            content: split.content,
+            summary: split.summary,
+            createdAt: Date.now() + i,
+            updatedAt: Date.now() + i,
+          };
+          await db.scenes.add(newScene);
+          newCreatedScenes.push(newScene);
+          lastSnapshotMapRef.current[newScene.id] = newScene.content;
+        }
 
-          setScenes(newCreatedScenes);
-          if (newCreatedScenes.length > 0) {
-            handleSelectScene(newCreatedScenes[0].id);
-          }
+        setScenes(newCreatedScenes);
+        if (newCreatedScenes.length > 0) {
+          handleSelectScene(newCreatedScenes[0].id);
         }
       }
     },

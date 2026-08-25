@@ -42,11 +42,22 @@ export class GeminiProvider implements LLMProvider {
 
     const body: any = {
       contents,
-      generationConfig: {
-        temperature: request.temperature ?? this.profile.temperature ?? 0.3,
-        maxOutputTokens: request.maxTokens ?? this.profile.maxTokens ?? 3000,
-      },
     };
+
+    const generationConfig: any = {};
+    if (request.temperature !== undefined || this.profile.temperature !== undefined) {
+      generationConfig.temperature = request.temperature ?? this.profile.temperature;
+    }
+    if (request.maxTokens !== undefined || this.profile.maxTokens !== undefined) {
+      generationConfig.maxOutputTokens = request.maxTokens ?? this.profile.maxTokens;
+    }
+    if (request.responseFormat === 'json_object') {
+      generationConfig.responseMimeType = 'application/json';
+    }
+
+    if (Object.keys(generationConfig).length > 0) {
+      body.generationConfig = generationConfig;
+    }
 
     if (systemInstruction) {
       body.systemInstruction = {
@@ -54,15 +65,25 @@ export class GeminiProvider implements LLMProvider {
       };
     }
 
-    if (request.responseFormat === 'json_object') {
-      body.generationConfig.responseMimeType = 'application/json';
-    }
-
-    const timeout = this.profile.timeoutMs || 60000;
+    const timeout = this.profile.timeoutMs || 300000;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
+    let isTimedOut = false;
+    const timer = setTimeout(() => {
+      isTimedOut = true;
+      try {
+        controller.abort(new Error(`Gemini API 请求超时 (${Math.round(timeout / 1000)} 秒)`));
+      } catch {
+        controller.abort();
+      }
+    }, timeout);
 
-    const onAbort = () => controller.abort();
+    const onAbort = () => {
+      try {
+        controller.abort(request.signal?.reason || new Error('请求已取消'));
+      } catch {
+        controller.abort();
+      }
+    };
     if (request.signal) {
       request.signal.addEventListener('abort', onAbort);
     }
@@ -92,6 +113,15 @@ export class GeminiProvider implements LLMProvider {
           completionTokens: data.usageMetadata?.candidatesTokenCount,
         },
       };
+    } catch (err: any) {
+      if (isTimedOut) {
+        throw new Error(`Gemini 请求超时 (${Math.round(timeout / 1000)} 秒)，当前文稿篇幅较大或模型响应缓慢，请稍后重试或在设置中延长超时时间。`);
+      }
+      if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
+        const customReason = request.signal?.reason?.message || (typeof request.signal?.reason === 'string' ? request.signal?.reason : null);
+        throw new Error(customReason || '请求已被取消或超时中断');
+      }
+      throw err;
     } finally {
       clearTimeout(timer);
       if (request.signal) {
@@ -118,18 +148,25 @@ export class GeminiProvider implements LLMProvider {
 
     const body: any = {
       contents,
-      generationConfig: {
-        temperature: request.temperature ?? this.profile.temperature ?? 0.3,
-        maxOutputTokens: request.maxTokens ?? this.profile.maxTokens ?? 3000,
-      },
     };
+
+    const generationConfig: any = {};
+    if (request.temperature !== undefined || this.profile.temperature !== undefined) {
+      generationConfig.temperature = request.temperature ?? this.profile.temperature;
+    }
+    if (request.maxTokens !== undefined || this.profile.maxTokens !== undefined) {
+      generationConfig.maxOutputTokens = request.maxTokens ?? this.profile.maxTokens;
+    }
+    if (request.responseFormat === 'json_object') {
+      generationConfig.responseMimeType = 'application/json';
+    }
+
+    if (Object.keys(generationConfig).length > 0) {
+      body.generationConfig = generationConfig;
+    }
 
     if (systemInstruction) {
       body.systemInstruction = { parts: [{ text: systemInstruction }] };
-    }
-
-    if (request.responseFormat === 'json_object') {
-      body.generationConfig.responseMimeType = 'application/json';
     }
 
     const response = await fetch(url, {

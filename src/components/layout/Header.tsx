@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   ShieldAlert
 } from 'lucide-react';
+import { VersoLogo } from './VersoLogo';
 
 interface HeaderProps {
   isSidebarOpen: boolean;
@@ -25,7 +26,6 @@ interface HeaderProps {
   onToggleTypewriter: () => void;
   focusMode: boolean;
   onToggleFocus: () => void;
-  isLocalOnly: boolean;
   activeProfileName: string;
   onOpenSettings: () => void;
 }
@@ -51,7 +51,6 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTypewriter,
   focusMode,
   onToggleFocus,
-  isLocalOnly,
   activeProfileName,
   onOpenSettings,
 }) => {
@@ -73,7 +72,8 @@ export const Header: React.FC<HeaderProps> = ({
 
         <div className="h-4 w-px bg-line mx-1" />
 
-        <div className="flex items-center space-x-1 text-xs font-serif text-ink">
+        <div className="flex items-center space-x-1.5 text-xs font-serif text-ink">
+          <VersoLogo size={16} />
           <span className="font-semibold tracking-wide">{sceneTitle || 'Verso'}</span>
         </div>
       </div>
@@ -120,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
               ? 'bg-ink text-paper'
               : 'text-ink-muted hover:text-ink hover:bg-paper-sunken'
           }`}
-          title="纯净专注模式 (Cmd/Ctrl + Shift + F)"
+          title="全屏专注模式 (Esc / Cmd/Ctrl + Shift + F)"
         >
           {focusMode ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
         </button>
@@ -159,16 +159,14 @@ export const Header: React.FC<HeaderProps> = ({
         {/* BYOK & Privacy Settings Trigger */}
         <button
           onClick={onOpenSettings}
-          className={`flex items-center space-x-1 px-2 py-1 rounded text-xs transition-colors ${
+          className={`flex items-center space-x-1 px-2 py-1 rounded text-xs transition-colors cursor-pointer ${
             !activeProfileName || activeProfileName === '未配置' || activeProfileName === '默认引擎'
               ? 'bg-cinnabar/10 text-cinnabar hover:bg-cinnabar/20'
               : 'text-ink-muted hover:text-ink hover:bg-paper-sunken'
           }`}
           title="模型与 BYOK 密钥配置"
         >
-          {isLocalOnly ? (
-            <ShieldAlert className="w-3.5 h-3.5 text-warn" />
-          ) : !activeProfileName || activeProfileName === '未配置' || activeProfileName === '默认引擎' ? (
+          {!activeProfileName || activeProfileName === '未配置' || activeProfileName === '默认引擎' ? (
             <ShieldAlert className="w-3.5 h-3.5 text-cinnabar" />
           ) : (
             <ShieldCheck className="w-3.5 h-3.5 text-ok" />

@@ -37,7 +37,7 @@ export const IntentView: React.FC<IntentViewProps> = ({
         );
       case 'over_explained':
         return (
-          <span className="flex items-center px-2 py-0.5 rounded text-xs font-bold bg-[#EDE7F6] text-[#512DA8]">
+          <span className="flex items-center px-2 py-0.5 rounded text-xs font-bold bg-warn/15 text-warn">
             <AlertCircle className="w-3.5 h-3.5 mr-1" /> 过度解释 Over-explained
           </span>
         );

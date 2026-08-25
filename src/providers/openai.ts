@@ -54,19 +54,39 @@ export class OpenAICompatibleProvider implements LLMProvider {
     const payload: any = {
       model: this.profile.model,
       messages: request.messages,
-      temperature: request.temperature ?? this.profile.temperature ?? 0.3,
-      max_tokens: request.maxTokens ?? this.profile.maxTokens ?? 3000,
     };
+
+    if (request.temperature !== undefined || this.profile.temperature !== undefined) {
+      payload.temperature = request.temperature ?? this.profile.temperature;
+    }
+
+    if (request.maxTokens !== undefined || this.profile.maxTokens !== undefined) {
+      payload.max_tokens = request.maxTokens ?? this.profile.maxTokens;
+    }
 
     if (request.responseFormat === 'json_object') {
       payload.response_format = { type: 'json_object' };
     }
 
-    const timeout = this.profile.timeoutMs || 60000;
+    const timeout = this.profile.timeoutMs || 300000;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
+    let isTimedOut = false;
+    const timer = setTimeout(() => {
+      isTimedOut = true;
+      try {
+        controller.abort(new Error(`API 请求超时 (${Math.round(timeout / 1000)} 秒)`));
+      } catch {
+        controller.abort();
+      }
+    }, timeout);
 
-    const onAbort = () => controller.abort();
+    const onAbort = () => {
+      try {
+        controller.abort(request.signal?.reason || new Error('请求已取消'));
+      } catch {
+        controller.abort();
+      }
+    };
     if (request.signal) {
       request.signal.addEventListener('abort', onAbort);
     }
@@ -96,6 +116,15 @@ export class OpenAICompatibleProvider implements LLMProvider {
           completionTokens: data.usage?.completion_tokens,
         },
       };
+    } catch (err: any) {
+      if (isTimedOut) {
+        throw new Error(`AI 请求超时 (${Math.round(timeout / 1000)} 秒)，当前文稿篇幅较大或模型响应缓慢，请稍后重试或在设置中延长超时时间。`);
+      }
+      if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
+        const customReason = request.signal?.reason?.message || (typeof request.signal?.reason === 'string' ? request.signal?.reason : null);
+        throw new Error(customReason || '请求已被取消或超时中断');
+      }
+      throw err;
     } finally {
       clearTimeout(timer);
       if (request.signal) {
@@ -122,10 +151,16 @@ export class OpenAICompatibleProvider implements LLMProvider {
     const payload: any = {
       model: this.profile.model,
       messages: request.messages,
-      temperature: request.temperature ?? this.profile.temperature ?? 0.3,
-      max_tokens: request.maxTokens ?? this.profile.maxTokens ?? 3000,
       stream: true,
     };
+
+    if (request.temperature !== undefined || this.profile.temperature !== undefined) {
+      payload.temperature = request.temperature ?? this.profile.temperature;
+    }
+
+    if (request.maxTokens !== undefined || this.profile.maxTokens !== undefined) {
+      payload.max_tokens = request.maxTokens ?? this.profile.maxTokens;
+    }
 
     if (request.responseFormat === 'json_object') {
       payload.response_format = { type: 'json_object' };

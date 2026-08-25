@@ -1,51 +1,57 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   isStrictLoopbackURL,
-  encryptSecret,
-  decryptSecret,
+  saveSecretApiKey,
+  getSecretApiKey,
+  removeSecretApiKey,
+  clearAllSecretApiKeys,
   sanitizeProfilesForExport,
 } from '../secretStore';
 import type { ModelProfile } from '../../types';
 
 describe('SecretStore & Security Utilities', () => {
-  it('should validate strict loopback URLs for Local-only mode', () => {
+  beforeEach(() => {
+    clearAllSecretApiKeys();
+  });
+
+  it('should validate strict loopback URLs', () => {
     expect(isStrictLoopbackURL('http://localhost:11434')).toBe(true);
     expect(isStrictLoopbackURL('http://127.0.0.1:11434')).toBe(true);
     expect(isStrictLoopbackURL('http://0.0.0.0:8000')).toBe(true);
     expect(isStrictLoopbackURL('http://[::1]:11434')).toBe(true);
     expect(isStrictLoopbackURL('localhost:11434')).toBe(true);
 
-    // External cloud endpoints must be rejected in local-only mode
+    // External cloud endpoints
     expect(isStrictLoopbackURL('https://api.openai.com/v1')).toBe(false);
     expect(isStrictLoopbackURL('https://api.anthropic.com')).toBe(false);
     expect(isStrictLoopbackURL('https://api.deepseek.com')).toBe(false);
     expect(isStrictLoopbackURL('http://192.168.1.50:8000')).toBe(false);
   });
 
-  it('should encrypt and decrypt secret roundtrip with user passphrase', async () => {
-    const rawSecret = 'sk-test-secret-literary-key-123456';
-    const passphrase = 'my-secure-author-passphrase';
-    const encrypted1 = await encryptSecret(rawSecret, passphrase);
-    const encrypted2 = await encryptSecret(rawSecret, passphrase);
+  it('should save, retrieve and remove API keys', async () => {
+    const profileId = 'prof-test-1';
+    const testKey = 'sk-test-secret-literary-key-123456';
 
-    expect(encrypted1).not.toBe(rawSecret);
-    expect(encrypted1.startsWith('v1:')).toBe(true);
-    // Two encryptions of same secret must produce DIFFERENT ciphertexts due to fresh random Salt & IV
-    expect(encrypted1).not.toBe(encrypted2);
+    await saveSecretApiKey(profileId, testKey);
+    const retrieved = await getSecretApiKey(profileId);
+    expect(retrieved).toBe(testKey);
 
-    const decrypted = await decryptSecret(encrypted1, passphrase);
-    expect(decrypted).toBe(rawSecret);
+    removeSecretApiKey(profileId);
+    const afterRemove = await getSecretApiKey(profileId);
+    expect(afterRemove).toBe('');
   });
 
-  it('should reject encryption without passphrase', async () => {
-    await expect(encryptSecret('sk-test', '')).rejects.toThrow();
-  });
+  it('should clear all stored API keys', async () => {
+    await saveSecretApiKey('p1', 'key-1');
+    await saveSecretApiKey('p2', 'key-2');
 
-  it('should reject decryption with incorrect passphrase', async () => {
-    const rawSecret = 'sk-test-secret-key';
-    const encrypted = await encryptSecret(rawSecret, 'correct-passphrase');
+    expect(await getSecretApiKey('p1')).toBe('key-1');
+    expect(await getSecretApiKey('p2')).toBe('key-2');
 
-    await expect(decryptSecret(encrypted, 'wrong-passphrase')).rejects.toThrow();
+    clearAllSecretApiKeys();
+
+    expect(await getSecretApiKey('p1')).toBe('');
+    expect(await getSecretApiKey('p2')).toBe('');
   });
 
   it('should sanitize profiles by stripping API keys for export', () => {
@@ -75,3 +81,4 @@ describe('SecretStore & Security Utilities', () => {
     expect(sanitized[0].name).toBe('Profile 1');
   });
 });
+

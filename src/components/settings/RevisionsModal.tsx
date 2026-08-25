@@ -91,7 +91,7 @@ export const RevisionsModal: React.FC<RevisionsModalProps> = ({
       case 'checkpoint':
         return <History className="w-3.5 h-3.5 text-cinnabar" />;
       case 'rollback':
-        return <RotateCcw className="w-3.5 h-3.5 text-[#1565C0]" />;
+        return <RotateCcw className="w-3.5 h-3.5 text-ink-muted" />;
       default:
         return <FileText className="w-3.5 h-3.5 text-ink-muted" />;
     }
@@ -231,7 +231,7 @@ export const RevisionsModal: React.FC<RevisionsModalProps> = ({
                           type="text"
                           value={editingDesc}
                           onChange={(e) => setEditingDesc(e.target.value)}
-                          className="flex-1 p-1 text-xs bg-white dark:bg-[#141312] border border-[#D5CBB8] rounded"
+                          className="flex-1 p-1 text-xs bg-paper border border-line-strong rounded text-ink focus:outline-none"
                           autoFocus
                         />
                         <button

@@ -367,7 +367,7 @@ export function parseManuscriptProfileResponse(
     };
   } catch {
     return {
-      synopsis: raw.trim().slice(0, 300) || `文稿《${defaultTitle}》`,
+      synopsis: raw.trim() || `文稿《${defaultTitle}》`,
       characters: [],
       motifs: [],
     };

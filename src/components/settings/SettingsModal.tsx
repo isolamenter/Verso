@@ -4,15 +4,14 @@ import type {
   AppSettings,
   ProviderType,
   TaskBindingType,
-  ApiKeyStorageMode
+  ContextPolicy,
 } from '../../types';
 import { createLLMProvider } from '../../providers/factory';
 import { resetEntireDatabase } from '../../db';
 import {
   saveSecretApiKey,
   getSecretApiKey,
-  clearAllSecretApiKeys,
-  isStrictLoopbackURL
+  clearAllSecretApiKeys
 } from '../../utils/secretStore';
 import {
   X,
@@ -23,7 +22,6 @@ import {
   Trash2,
   Lock,
   Key,
-  ShieldAlert,
   Sparkles,
   ChevronDown,
   RotateCcw
@@ -51,8 +49,7 @@ const PRESET_TEMPLATES: {
       providerType: 'deepseek',
       model: 'deepseek-chat',
       baseURL: 'https://api.deepseek.com/v1',
-      temperature: 0.2,
-      maxTokens: 3000,
+      timeoutMs: 300000,
       taskBinding: 'general',
     },
   },
@@ -64,8 +61,7 @@ const PRESET_TEMPLATES: {
       name: 'Claude 3.7 Sonnet (Deep Critic)',
       providerType: 'anthropic',
       model: 'claude-3-7-sonnet-20250219',
-      temperature: 0.3,
-      maxTokens: 4000,
+      timeoutMs: 300000,
       taskBinding: 'general',
     },
   },
@@ -78,8 +74,7 @@ const PRESET_TEMPLATES: {
       providerType: 'openai',
       model: 'gpt-4o',
       baseURL: 'https://api.openai.com/v1',
-      temperature: 0.3,
-      maxTokens: 3000,
+      timeoutMs: 300000,
       taskBinding: 'general',
     },
   },
@@ -91,8 +86,7 @@ const PRESET_TEMPLATES: {
       name: 'Gemini 2.0 Flash',
       providerType: 'gemini',
       model: 'gemini-2.0-flash',
-      temperature: 0.3,
-      maxTokens: 3000,
+      timeoutMs: 300000,
       taskBinding: 'general',
     },
   },
@@ -105,8 +99,7 @@ const PRESET_TEMPLATES: {
       providerType: 'ollama',
       model: 'qwen2.5:32b',
       baseURL: 'http://localhost:11434',
-      temperature: 0.2,
-      maxTokens: 2048,
+      timeoutMs: 300000,
       taskBinding: 'local_privacy',
     },
   },
@@ -119,8 +112,7 @@ const PRESET_TEMPLATES: {
       providerType: 'openai',
       model: 'custom-model',
       baseURL: 'https://api.openai.com/v1',
-      temperature: 0.3,
-      maxTokens: 3000,
+      timeoutMs: 300000,
       taskBinding: 'general',
     },
   },
@@ -134,12 +126,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [activeProfileId, setActiveProfileId] = useState(settings.activeProfileId);
   const [profiles, setProfiles] = useState<ModelProfile[]>(settings.profiles);
-  const [localOnlyMode, setLocalOnlyMode] = useState(settings.localOnlyMode);
-  const [keyStorageMode, setKeyStorageMode] = useState<ApiKeyStorageMode>(
-    settings.keyStorageMode || 'session'
-  );
   const [apiKeysMap, setApiKeysMap] = useState<Record<string, string>>({});
-  const [masterPassphrase, setMasterPassphrase] = useState('');
   const [testResult, setTestResult] = useState<{ ok?: boolean; message?: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [showPresetDropdown, setShowPresetDropdown] = useState(false);
@@ -149,8 +136,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (isOpen) {
       setActiveProfileId(settings.activeProfileId || settings.profiles[0]?.id || '');
       setProfiles(settings.profiles);
-      setLocalOnlyMode(settings.localOnlyMode);
-      setKeyStorageMode(settings.keyStorageMode || 'session');
       setTestResult(null);
       setShowPresetDropdown(false);
     }
@@ -161,7 +146,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     async function loadKeys() {
       const keys: Record<string, string> = {};
       for (const p of profiles) {
-        const key = await getSecretApiKey(p.id, masterPassphrase || undefined);
+        const key = await getSecretApiKey(p.id);
         if (key) keys[p.id] = key;
         else if (p.apiKey) keys[p.id] = p.apiKey;
       }
@@ -170,7 +155,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (isOpen) {
       loadKeys();
     }
-  }, [isOpen, profiles, masterPassphrase]);
+  }, [isOpen, profiles]);
 
   if (!isOpen) return null;
 
@@ -194,7 +179,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setTestResult(null);
     try {
       const key = apiKeysMap[currentProfile.id] || currentProfile.apiKey;
-      const provider = createLLMProvider(currentProfile, localOnlyMode, key);
+      const provider = createLLMProvider(currentProfile, key);
       const res = await provider.testConnection();
       setTestResult(res);
     } catch (err: any) {
@@ -205,11 +190,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleClearAllKeys = () => {
-    if (confirm('确认清除当前设备/会话中存储的所有 API 密钥吗？清除后需重新输入。')) {
+    if (confirm('确认清除当前设备中存储的所有 API 密钥吗？清除后需重新输入。')) {
       clearAllSecretApiKeys();
       setApiKeysMap({});
-      setMasterPassphrase('');
-      alert('所有本地密钥已安全销毁。');
+      alert('所有本地密钥已安全清除。');
     }
   };
 
@@ -226,18 +210,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleSave = async () => {
-    if (keyStorageMode === 'encrypted_local' && !masterPassphrase.trim()) {
-      const hasAnyKeys = Object.values(apiKeysMap).some((k) => k && k.trim());
-      if (hasAnyKeys) {
-        alert('本地加密持久化必须提供主密码/口令以保护 API 密钥！');
-        return;
-      }
-    }
-
     try {
-      // Save keys into SecretStore according to chosen mode
+      // Save keys into SecretStore
       for (const [profileId, key] of Object.entries(apiKeysMap)) {
-        await saveSecretApiKey(profileId, key, keyStorageMode, masterPassphrase || undefined);
+        await saveSecretApiKey(profileId, key);
       }
 
       // Sanitize profiles so apiKey isn't persisted in plain settings table
@@ -255,8 +231,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         ...settings,
         activeProfileId: finalActiveId,
         profiles: sanitizedProfiles,
-        keyStorageMode,
-        localOnlyMode,
       });
       onClose();
     } catch (err: any) {
@@ -283,8 +257,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       providerType: 'openai',
       model: 'gpt-4o',
       baseURL: 'https://api.openai.com/v1',
-      temperature: 0.3,
-      maxTokens: 3000,
+      timeoutMs: 300000,
       taskBinding: 'general',
     };
     setProfiles((prev) => [...prev, newProf]);
@@ -299,8 +272,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setActiveProfileId(next[0]?.id || '');
     }
   };
-
-  const isCurrentEndpointLoopback = isStrictLoopbackURL(currentProfile?.baseURL);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
@@ -325,107 +296,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex-1 overflow-y-auto p-5 space-y-5 font-serif text-xs">
           {/* Privacy & Key Security Policy Banner */}
           <div className="p-3.5 bg-paper-sunken rounded border border-line space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-1.5 font-bold text-ink">
-                <Lock className="w-3.5 h-3.5 text-ok" />
-                <span>严肃文学创作者隐私与密钥防护策略</span>
-              </div>
-              <label className="flex items-center space-x-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={localOnlyMode}
-                  onChange={(e) => setLocalOnlyMode(e.target.checked)}
-                  className="rounded border-[#D5CBB8] text-[#3D3934] focus:ring-0"
-                />
-                <span className="font-bold text-danger dark:text-[#EF9A9A]">
-                  纯本地离线模式 (Local-only)
-                </span>
-              </label>
+            <div className="flex items-center space-x-1.5 font-bold text-ink">
+              <Lock className="w-3.5 h-3.5 text-ok" />
+              <span>严肃文学创作者隐私与密钥防护策略</span>
             </div>
-
-            {/* Storage Mode Selector */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-line">
-              <label
-                className={`p-2.5 rounded border cursor-pointer transition-all ${
-                  keyStorageMode === 'session'
-                    ? 'bg-paper-sunken border-cinnabar font-semibold'
-                    : 'bg-paper border-line'
-                }`}
-              >
-                <div className="flex items-center space-x-1.5 mb-1">
-                  <input
-                    type="radio"
-                    name="keyStorageMode"
-                    value="session"
-                    checked={keyStorageMode === 'session'}
-                    onChange={() => setKeyStorageMode('session')}
-                    className="text-[#3D3934]"
-                  />
-                  <span className="font-bold">仅会话临时保存 (推荐: 最安全)</span>
-                </div>
-                <p className="text-[10px] text-ink-muted dark:text-[#A89F91] leading-tight">
-                  密钥仅保留在当前会话内存中，关闭当前浏览器标签页后彻底销毁。
-                </p>
-              </label>
-
-              <label
-                className={`p-2.5 rounded border cursor-pointer transition-all ${
-                  keyStorageMode === 'encrypted_local'
-                    ? 'bg-paper-sunken border-cinnabar font-semibold'
-                    : 'bg-paper border-line'
-                }`}
-              >
-                <div className="flex items-center space-x-1.5 mb-1">
-                  <input
-                    type="radio"
-                    name="keyStorageMode"
-                    value="encrypted_local"
-                    checked={keyStorageMode === 'encrypted_local'}
-                    onChange={() => setKeyStorageMode('encrypted_local')}
-                    className="text-[#3D3934]"
-                  />
-                  <span className="font-bold">本地主口令加密持久化</span>
-                </div>
-                <p className="text-[10px] text-ink-muted dark:text-[#A89F91] leading-tight">
-                  使用 WebCrypto AES-GCM 256 位 + PBKDF2 强加密存储于本地沙箱。
-                </p>
-              </label>
-            </div>
-
-            {/* Master passphrase input when encrypted_local is selected */}
-            {keyStorageMode === 'encrypted_local' && (
-              <div className="p-2.5 bg-paper rounded border border-line-strong space-y-1.5">
-                <label className="block text-[11px] font-bold text-cinnabar">
-                  本地加密主口令 (Master Passphrase)
-                </label>
-                <input
-                  type="password"
-                  value={masterPassphrase}
-                  onChange={(e) => setMasterPassphrase(e.target.value)}
-                  placeholder="请输入用于派生 AES-256 密钥的主密码/口令……"
-                  className="w-full p-2 bg-paper border border-line-strong rounded text-ink focus:outline-none font-mono text-xs"
-                />
-                <p className="text-[10px] text-ink-muted">
-                  提示：Verso 严禁使用任何固定设备内置密码。请妥善保管此口令，下次打开软件解密时需再次输入。
-                </p>
-              </div>
-            )}
 
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1 border-t border-line">
               <span className="text-[10px] text-ink-muted leading-relaxed">
-                Verso 为纯客户端无服务端架构，从不架设中央中转服务器。当您发起 AI 审读时，选中文稿与 API Key 将由浏览器直接发送给您所选择的模型服务商，绝不经过任何第三方未授权服务器。
+                Verso 为纯客户端无服务端架构，从不架设中央中转服务器。当您发起 AI 审读时，选中文稿与 API Key 将由浏览器直接发送给您所选择的模型服务商，绝不经过任何第三方未授权服务器。密钥仅在本地安全存储。
               </span>
               <div className="flex items-center space-x-3 shrink-0">
                 <button
                   onClick={handleClearAllKeys}
-                  className="text-[11px] text-ink-muted hover:text-danger underline flex items-center space-x-1"
+                  className="text-[11px] text-ink-muted hover:text-danger underline flex items-center space-x-1 cursor-pointer"
                 >
                   <Key className="w-3 h-3" />
                   <span>清除全部密钥</span>
                 </button>
                 <button
                   onClick={handleResetWorkspace}
-                  className="text-[11px] text-danger hover:text-danger font-bold underline flex items-center space-x-1"
+                  className="text-[11px] text-danger hover:text-danger font-bold underline flex items-center space-x-1 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" />
                   <span>重置并初始化工作区</span>
@@ -551,7 +441,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         {hasKey && <span className="w-1.5 h-1.5 rounded-full bg-ok" title="已配置 Key / 本地服务" />}
                       </div>
                       <div className="text-[10px] text-ink-muted dark:text-ink-muted truncate font-mono mt-0.5">
-                        {p.providerType} • {p.taskBinding || 'general'}
+                        {p.providerType} • {p.taskBinding || 'general'}{p.contextPolicy && p.contextPolicy !== 'ui_default' ? ` • ${p.contextPolicy}` : ''}
                       </div>
                     </div>
                   );
@@ -576,7 +466,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-ink-muted mb-1">
                     Profile 名称
@@ -585,7 +475,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     type="text"
                     value={currentProfile.name}
                     onChange={(e) => handleUpdateCurrentProfile({ name: e.target.value })}
-                    className="w-full p-2 bg-paper border border-line-strong rounded text-ink focus:outline-none"
+                    className="w-full p-2 bg-paper border border-line-strong rounded text-ink focus:outline-none text-xs"
                   />
                 </div>
 
@@ -598,7 +488,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onChange={(e) =>
                       handleUpdateCurrentProfile({ providerType: e.target.value as ProviderType })
                     }
-                    className="w-full p-2 bg-paper border border-line-strong rounded text-ink focus:outline-none"
+                    className="w-full p-2 bg-paper border border-line-strong rounded text-ink focus:outline-none text-xs"
                   >
                     <option value="deepseek">DeepSeek 官方 API</option>
                     <option value="anthropic">Anthropic (Claude 3.5 / 3.7)</option>
@@ -619,7 +509,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onChange={(e) =>
                       handleUpdateCurrentProfile({ taskBinding: e.target.value as TaskBindingType })
                     }
-                    className="w-full p-2 bg-paper border border-line-strong rounded text-ink focus:outline-none"
+                    className="w-full p-2 bg-paper border border-line-strong rounded text-ink focus:outline-none text-xs"
                   >
                     <option value="general">通用文学审读 (General)</option>
                     <option value="cold_reader">冷读者盲审 (Cold Reader)</option>
@@ -627,6 +517,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <option value="quick_critique">快速审校 (Quick Critique)</option>
                     <option value="ask">文学讨论与发问 (Ask)</option>
                     <option value="local_privacy">本地隐私模式专享 (Local Privacy)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-ink-muted mb-1">
+                    上下文策略 (Context Policy)
+                  </label>
+                  <select
+                    value={currentProfile.contextPolicy || 'ui_default'}
+                    onChange={(e) =>
+                      handleUpdateCurrentProfile({ contextPolicy: e.target.value as ContextPolicy })
+                    }
+                    className="w-full p-2 bg-paper border border-line-strong rounded text-ink focus:outline-none text-xs"
+                  >
+                    <option value="ui_default">遵循工作台勾选 (UI Default)</option>
+                    <option value="selection_only">严格最小化：仅选中文段</option>
+                    <option value="current_scene_only">单场景隔离：仅当前场景</option>
+                    <option value="scene_and_notes">场景与设定：场景+人物/意象</option>
+                    <option value="scene_and_preceding">连贯衔接：前一场景+当前场景+设定</option>
+                    <option value="full_manuscript">全书长文本：整本手稿全量上下文</option>
                   </select>
                 </div>
               </div>
@@ -654,18 +564,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     value={currentProfile.baseURL || ''}
                     onChange={(e) => handleUpdateCurrentProfile({ baseURL: e.target.value })}
                     placeholder="e.g. https://api.deepseek.com/v1 或 http://localhost:11434"
-                    className={`w-full p-2 font-mono bg-paper border rounded text-ink focus:outline-none ${
-                      localOnlyMode && !isCurrentEndpointLoopback
-                        ? 'border-danger'
-                        : 'border-line-strong'
-                    }`}
+                    className="w-full p-2 font-mono bg-paper border border-line-strong rounded text-ink focus:outline-none"
                   />
-                  {localOnlyMode && !isCurrentEndpointLoopback && (
-                    <p className="text-[10px] text-danger mt-1 flex items-center space-x-1">
-                      <ShieldAlert className="w-3 h-3 shrink-0" />
-                      <span>纯本地模式下仅允许回环地址 (localhost / 127.0.0.1)</span>
-                    </p>
-                  )}
                 </div>
               </div>
 
@@ -684,41 +584,74 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               )}
 
-              {/* Sliders: Temperature & Max Tokens */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              {/* Token & Temperature Settings */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <div className="flex justify-between text-[11px] font-bold text-ink-muted mb-1">
-                    <span>生成温度 (Temperature): {currentProfile.temperature}</span>
-                    <span className="font-normal text-[10px] text-[#A89F91]">
-                      严肃文学建议 0.2 ~ 0.3
-                    </span>
+                    <span>最大输出 Token (Max Tokens)</span>
+                    <span className="font-normal text-[10px] text-ink-faint">留空由模型自适应</span>
                   </div>
                   <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={currentProfile.temperature}
-                    onChange={(e) =>
-                      handleUpdateCurrentProfile({ temperature: parseFloat(e.target.value) })
-                    }
-                    className="w-full accent-cinnabar"
+                    type="number"
+                    min="1"
+                    step="512"
+                    value={currentProfile.maxTokens ?? ''}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      handleUpdateCurrentProfile({
+                        maxTokens: isNaN(val) || val <= 0 ? undefined : val,
+                      });
+                    }}
+                    placeholder="如: 8192 或 16384 (留空自适应)"
+                    className="w-full p-2 font-mono bg-paper border border-line-strong rounded text-ink focus:outline-none text-xs"
                   />
                 </div>
 
                 <div>
                   <div className="flex justify-between text-[11px] font-bold text-ink-muted mb-1">
-                    <span>最大 Token 限制: {currentProfile.maxTokens}</span>
+                    <span>采样温度 (Temperature)</span>
+                    <span className="font-normal text-[10px] text-ink-faint">0.0~2.0 (留空默认)</span>
                   </div>
                   <input
                     type="number"
-                    value={currentProfile.maxTokens}
-                    onChange={(e) =>
-                      handleUpdateCurrentProfile({ maxTokens: parseInt(e.target.value, 10) })
-                    }
-                    className="w-full p-1.5 font-mono bg-paper border border-line-strong rounded text-ink focus:outline-none"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={currentProfile.temperature ?? ''}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      handleUpdateCurrentProfile({
+                        temperature: isNaN(val) ? undefined : val,
+                      });
+                    }}
+                    placeholder="如: 0.7 (留空模型默认)"
+                    className="w-full p-2 font-mono bg-paper border border-line-strong rounded text-ink focus:outline-none text-xs"
                   />
                 </div>
+              </div>
+
+              {/* Timeout Setting */}
+              <div className="pt-2">
+                <div className="flex justify-between text-[11px] font-bold text-ink-muted mb-1">
+                  <span>请求超时时间 (Timeout): {Math.round((currentProfile.timeoutMs || 300000) / 1000)} 秒</span>
+                  <span className="font-normal text-[10px] text-ink-faint">
+                    ~{Math.round((currentProfile.timeoutMs || 300000) / 60000)} 分钟 (长篇审校建议 300 秒)
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  min="30"
+                  step="30"
+                  value={Math.round((currentProfile.timeoutMs || 300000) / 1000)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    handleUpdateCurrentProfile({
+                      timeoutMs: isNaN(val) || val <= 0 ? 300000 : val * 1000,
+                    });
+                  }}
+                  placeholder="300"
+                  className="w-full p-2 font-mono bg-paper border border-line-strong rounded text-ink focus:outline-none text-xs"
+                />
               </div>
 
               {/* Connection Test */}
@@ -734,9 +667,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {testResult && (
                   <div
                     className={`flex items-center space-x-1.5 text-xs ${
-                      testResult.ok
-                        ? 'text-ok dark:text-[#81C784]'
-                        : 'text-danger dark:text-[#EF9A9A]'
+                      testResult.ok ? 'text-ok' : 'text-danger'
                     }`}
                   >
                     {testResult.ok ? (

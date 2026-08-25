@@ -17,6 +17,25 @@ describe('Manuscript Profiler & Onboarding', () => {
     expect(promptShort).not.toContain('sceneSplits');
   });
 
+  it('should include author annotations and directives when userNotes is provided', () => {
+    const userNotes = '主角是陈默，修正人物身份为前侦探；重点提炼生锈钥匙与旧皮箱的意象；梗概突出反转。';
+    const prompt = buildManuscriptProfilePrompt('雨夜迷局', '正文内容……', {
+      userNotes,
+    });
+
+    expect(prompt).toContain('作者批注与核心修正要求');
+    expect(prompt).toContain(userNotes);
+    expect(prompt).toContain('严格遵从作者批注中关于人物身份、关系与性格的修正');
+    expect(prompt).toContain('优先覆盖作者批注中指定或强调的核心意象');
+  });
+
+  it('should not include author annotations section when userNotes is empty or whitespace', () => {
+    const promptEmpty = buildManuscriptProfilePrompt('雨夜迷局', '正文内容……', {
+      userNotes: '   ',
+    });
+    expect(promptEmpty).not.toContain('作者批注与核心修正要求');
+  });
+
   it('should parse complete structured profiling response JSON', () => {
     const raw = JSON.stringify({
       synopsis: '讲述一个修表匠在城市拆迁前夕与盲女相遇的故事。',

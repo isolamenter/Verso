@@ -14,15 +14,17 @@ import type {
   Scene,
   TaskBindingType,
   ModelProfile,
-  LLMProvider
+  LLMProvider,
+  ContextPolicy
 } from '../types';
 import { db } from '../db';
 import { BUILTIN_LENSES, BUILTIN_PROMPT_TEMPLATES } from '../db/initialData';
 import { createLLMProvider } from '../providers/factory';
-import { getSecretApiKey, isStrictLoopbackURL } from '../utils/secretStore';
+import { getSecretApiKey } from '../utils/secretStore';
 import {
   buildLiteraryContext,
   buildColdReaderIsolatedContext,
+  resolveEffectiveContextConfig,
 } from '../utils/contextBuilder';
 import { extractPlainText, findBestAnchorMatch } from '../utils/textProjection';
 import { LITERARY_EDITOR_SYSTEM_PROMPT } from '../prompts/system';
@@ -43,22 +45,14 @@ export interface TaskExecutionPlan {
   provider: LLMProvider;
   profile: ModelProfile;
   systemPrompt: string;
-  temperature: number;
-  maxTokens: number;
-  contextPolicy?: string;
+  temperature?: number;
+  maxTokens?: number;
+  contextPolicy?: ContextPolicy;
 }
 
 async function checkProfileUsability(
-  profile: ModelProfile,
-  localOnlyMode: boolean
-): Promise<{ isUsable: boolean; resolvedApiKey?: string; isLocked?: boolean }> {
-  if (localOnlyMode) {
-    if (profile.providerType !== 'ollama') {
-      return { isUsable: false };
-    }
-    return { isUsable: isStrictLoopbackURL(profile.baseURL) };
-  }
-
+  profile: ModelProfile
+): Promise<{ isUsable: boolean; resolvedApiKey?: string }> {
   if (profile.providerType === 'ollama') {
     return { isUsable: Boolean(profile.baseURL && profile.baseURL.trim()) };
   }
@@ -70,16 +64,6 @@ async function checkProfileUsability(
   }
   if (key && key.trim()) {
     return { isUsable: true, resolvedApiKey: key.trim() };
-  }
-
-  // Check if encrypted key exists in localStorage (locked profile)
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const enc = localStorage.getItem(`verso_sec_enc_${profile.id}`);
-      if (enc) {
-        return { isUsable: false, isLocked: true };
-      }
-    } catch {}
   }
 
   return { isUsable: false };
@@ -222,17 +206,14 @@ export function useCritique(
     async (task: TaskBindingType = 'general'): Promise<TaskExecutionPlan> => {
       let chosenProfile: ModelProfile | undefined;
       let resolvedKey: string | undefined;
-      let targetLockedProfileName: string | undefined;
 
       // 1. Check if there is a task-bound profile that is configured and usable
       const boundProfile = settings.profiles.find((p) => p.taskBinding === task);
       if (boundProfile) {
-        const { isUsable, resolvedApiKey, isLocked } = await checkProfileUsability(boundProfile, settings.localOnlyMode);
+        const { isUsable, resolvedApiKey } = await checkProfileUsability(boundProfile);
         if (isUsable) {
           chosenProfile = boundProfile;
           resolvedKey = resolvedApiKey;
-        } else if (isLocked) {
-          targetLockedProfileName = boundProfile.name;
         }
       }
 
@@ -240,12 +221,10 @@ export function useCritique(
       if (!chosenProfile) {
         const activeProfile = settings.profiles.find((p) => p.id === settings.activeProfileId);
         if (activeProfile) {
-          const { isUsable, resolvedApiKey, isLocked } = await checkProfileUsability(activeProfile, settings.localOnlyMode);
+          const { isUsable, resolvedApiKey } = await checkProfileUsability(activeProfile);
           if (isUsable) {
             chosenProfile = activeProfile;
             resolvedKey = resolvedApiKey;
-          } else if (isLocked && !targetLockedProfileName) {
-            targetLockedProfileName = activeProfile.name;
           }
         }
       }
@@ -253,39 +232,29 @@ export function useCritique(
       // 3. Fallback to any usable profile in settings (configured provider)
       if (!chosenProfile) {
         for (const p of settings.profiles) {
-          const { isUsable, resolvedApiKey, isLocked } = await checkProfileUsability(p, settings.localOnlyMode);
+          const { isUsable, resolvedApiKey } = await checkProfileUsability(p);
           if (isUsable) {
             chosenProfile = p;
             resolvedKey = resolvedApiKey;
             break;
-          } else if (isLocked && !targetLockedProfileName) {
-            targetLockedProfileName = p.name;
           }
         }
       }
 
       // If no usable profile found, throw explicit error prompting user to configure API key
       if (!chosenProfile) {
-        if (targetLockedProfileName) {
-          throw new Error(`Profile「${targetLockedProfileName}」处于加密锁定状态，请在设置中输入主口令解锁后使用。`);
-        }
-        if (settings.localOnlyMode) {
-          throw new Error('当前处于「纯本地隐私模式」，未检测到可用的 Ollama 本地模型。请在设置中配置 Ollama 基础地址 (如 http://localhost:11434)。');
-        }
         throw new Error('未配置可用的 AI 模型 Profile 或 API Key。请点击右上角「设置」配置您的 API Key 或本地模型。');
       }
 
-      const provider = createLLMProvider(chosenProfile, settings.localOnlyMode, resolvedKey);
+      const provider = createLLMProvider(chosenProfile, resolvedKey);
       const systemPrompt = chosenProfile.systemPrompt || LITERARY_EDITOR_SYSTEM_PROMPT;
-      const temperature = chosenProfile.temperature ?? 0.3;
-      const maxTokens = chosenProfile.maxTokens ?? 3000;
 
       return {
         provider,
         profile: chosenProfile,
         systemPrompt,
-        temperature,
-        maxTokens,
+        temperature: chosenProfile.temperature,
+        maxTokens: chosenProfile.maxTokens,
         contextPolicy: chosenProfile.contextPolicy,
       };
     },
@@ -306,9 +275,12 @@ export function useCritique(
         const activeLens = lenses.find((l) => l.id === activeLensId);
         const activeTemplate = promptTemplates.find((t) => t.id === activeTemplateId);
 
+        // Resolve effective context configuration based on execution plan policy
+        const effectiveContextConfig = resolveEffectiveContextConfig(contextConfig, plan.contextPolicy);
+
         // Build unified multi-source context
         const builtContext = buildLiteraryContext(
-          contextConfig,
+          effectiveContextConfig,
           manuscript,
           scenes,
           currentScene,
@@ -496,9 +468,12 @@ export function useCritique(
       try {
         const plan = await getExecutionPlanForTask('ask');
 
+        // Resolve effective context configuration based on execution plan policy
+        const effectiveContextConfig = resolveEffectiveContextConfig(contextConfig, plan.contextPolicy);
+
         // Build context if user enabled context options
         const builtContext = buildLiteraryContext(
-          contextConfig,
+          effectiveContextConfig,
           manuscript,
           scenes,
           currentScene,
@@ -558,7 +533,7 @@ export function useCritique(
     async (
       title: string,
       content: string,
-      options?: { shouldSuggestScenes?: boolean }
+      options?: { userNotes?: string; shouldSuggestScenes?: boolean }
     ): Promise<ManuscriptProfileResult> => {
       if (profilerAbortRef.current) {
         profilerAbortRef.current.abort();
@@ -576,8 +551,8 @@ export function useCritique(
             { role: 'system', content: plan.systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          temperature: 0.25,
-          maxTokens: Math.max(plan.maxTokens, 3500),
+          temperature: plan.temperature,
+          maxTokens: plan.maxTokens,
           responseFormat: 'json_object',
           signal: abortController.signal,
         });

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildLiteraryContext,
   buildColdReaderIsolatedContext,
+  resolveEffectiveContextConfig,
   getPreviousScene,
   formatCharacterNotes,
   formatMotifs,
@@ -105,4 +106,76 @@ describe('ContextBuilder', () => {
     expect(coldContext.sections.length).toBe(1);
     expect(coldContext.sections[0].id).toBe('cold_read_scene');
   });
+
+  describe('resolveEffectiveContextConfig', () => {
+    const baseConfig: ContextSelectionConfig = {
+      includeSelectedText: true,
+      includeCurrentScene: true,
+      includePreviousScene: false,
+      includeCharacterNotes: true,
+      includeMotifs: false,
+      includeEntireManuscript: false,
+    };
+
+    it('should return baseConfig when policy is ui_default or undefined', () => {
+      expect(resolveEffectiveContextConfig(baseConfig, 'ui_default')).toEqual(baseConfig);
+      expect(resolveEffectiveContextConfig(baseConfig, undefined)).toEqual(baseConfig);
+    });
+
+    it('should return selection_only config when policy is selection_only', () => {
+      expect(resolveEffectiveContextConfig(baseConfig, 'selection_only')).toEqual({
+        includeSelectedText: true,
+        includeCurrentScene: false,
+        includePreviousScene: false,
+        includeCharacterNotes: false,
+        includeMotifs: false,
+        includeEntireManuscript: false,
+      });
+    });
+
+    it('should return current_scene_only config when policy is current_scene_only', () => {
+      expect(resolveEffectiveContextConfig(baseConfig, 'current_scene_only')).toEqual({
+        includeSelectedText: true,
+        includeCurrentScene: true,
+        includePreviousScene: false,
+        includeCharacterNotes: false,
+        includeMotifs: false,
+        includeEntireManuscript: false,
+      });
+    });
+
+    it('should return scene_and_notes config when policy is scene_and_notes', () => {
+      expect(resolveEffectiveContextConfig(baseConfig, 'scene_and_notes')).toEqual({
+        includeSelectedText: true,
+        includeCurrentScene: true,
+        includePreviousScene: false,
+        includeCharacterNotes: true,
+        includeMotifs: true,
+        includeEntireManuscript: false,
+      });
+    });
+
+    it('should return scene_and_preceding config when policy is scene_and_preceding', () => {
+      expect(resolveEffectiveContextConfig(baseConfig, 'scene_and_preceding')).toEqual({
+        includeSelectedText: true,
+        includeCurrentScene: true,
+        includePreviousScene: true,
+        includeCharacterNotes: true,
+        includeMotifs: true,
+        includeEntireManuscript: false,
+      });
+    });
+
+    it('should return full_manuscript config when policy is full_manuscript', () => {
+      expect(resolveEffectiveContextConfig(baseConfig, 'full_manuscript')).toEqual({
+        includeSelectedText: true,
+        includeCurrentScene: true,
+        includePreviousScene: true,
+        includeCharacterNotes: true,
+        includeMotifs: true,
+        includeEntireManuscript: true,
+      });
+    });
+  });
 });
+

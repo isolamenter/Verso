@@ -17,20 +17,30 @@ import {
   Plus,
   Trash2,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw
 } from 'lucide-react';
 
 interface ImportAssistantModalProps {
   isOpen: boolean;
   onClose: () => void;
   manuscript: Manuscript | null;
-  sceneContent: string;
+  manuscriptContent: string;
+  scenesCount?: number;
   isLoading: boolean;
-  onRunProfile: (title: string, content: string) => Promise<ManuscriptProfileResult>;
+  onRunProfile: (
+    title: string,
+    content: string,
+    options?: { userNotes?: string; shouldSuggestScenes?: boolean }
+  ) => Promise<ManuscriptProfileResult>;
   onApplyProfile: (
     manuscriptId: string,
     data: {
       synopsis?: string;
+      notes?: string;
       characters?: CharacterItem[];
       motifs?: MotifItem[];
       sceneSplits?: SceneSplitSuggestion[];
@@ -42,13 +52,19 @@ export const ImportAssistantModal: React.FC<ImportAssistantModalProps> = ({
   isOpen,
   onClose,
   manuscript,
-  sceneContent,
+  manuscriptContent,
+  scenesCount = 1,
   isLoading,
   onRunProfile,
   onApplyProfile,
 }) => {
   const [profileResult, setProfileResult] = useState<ManuscriptProfileResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // User Annotations for fine-grained re-generation guidance
+  const [userNotes, setUserNotes] = useState<string>('');
+  const [hasAppliedNotes, setHasAppliedNotes] = useState<boolean>(false);
+  const [isNotesExpanded, setIsNotesExpanded] = useState<boolean>(true);
 
   // Editable local state
   const [synopsis, setSynopsis] = useState('');
@@ -62,36 +78,61 @@ export const ImportAssistantModal: React.FC<ImportAssistantModalProps> = ({
 
   const [activeTab, setActiveTab] = useState<'overview' | 'characters' | 'motifs' | 'splits'>('overview');
 
-  const handleTriggerProfiling = useCallback(async () => {
-    if (!manuscript) return;
-    setErrorMsg(null);
-    try {
-      const result = await onRunProfile(manuscript.title, sceneContent);
-      setProfileResult(result);
-      setSynopsis(result.synopsis || '');
-      setApplySynopsis(Boolean(result.synopsis));
+  const handleTriggerProfiling = useCallback(
+    async (overrideNotes?: string) => {
+      if (!manuscript) return;
+      setErrorMsg(null);
+      const notesToUse = overrideNotes !== undefined ? overrideNotes : userNotes;
+      try {
+        const result = await onRunProfile(manuscript.title, manuscriptContent, {
+          userNotes: notesToUse.trim() || undefined,
+        });
+        setProfileResult(result);
+        setSynopsis(result.synopsis || '');
+        setApplySynopsis(Boolean(result.synopsis));
 
-      setCharacters(
-        (result.characters || []).map((c) => ({
-          ...c,
-          selected: true,
-        }))
-      );
+        setCharacters(
+          (result.characters || []).map((c) => ({
+            ...c,
+            selected: true,
+          }))
+        );
 
-      setMotifs(
-        (result.motifs || []).map((m) => ({
-          ...m,
-          selected: true,
-        }))
-      );
+        setMotifs(
+          (result.motifs || []).map((m) => ({
+            ...m,
+            selected: true,
+          }))
+        );
 
-      const splits = result.sceneSplits || [];
-      setSceneSplits(splits);
-      setApplySplits(splits.length > 1);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'AI 文学建档分析失败，请检查模型与 API Key 配置。');
-    }
-  }, [manuscript, sceneContent, onRunProfile]);
+        const splits = result.sceneSplits || [];
+        setSceneSplits(splits);
+        // If manuscript already has multiple scenes, keep applySplits false by default to protect structure
+        setApplySplits(scenesCount <= 1 && splits.length > 1);
+        setHasAppliedNotes(Boolean(notesToUse.trim()));
+      } catch (err: any) {
+        if (err?.message?.includes('without reason') || err?.name === 'AbortError') {
+          setErrorMsg(
+            'AI 建档请求超时（或被中断）。长篇文稿全篇深度分析耗时较长，请重试或在右上角「设置」中调大超时时间（已默认升级为 5 分钟）。'
+          );
+        } else {
+          setErrorMsg(err.message || 'AI 文学建档分析失败，请检查模型与 API Key 配置。');
+        }
+      }
+    },
+    [manuscript, manuscriptContent, scenesCount, userNotes, onRunProfile]
+  );
+
+  const handleInsertTag = (tagPrefix: string) => {
+    setUserNotes((prev) => {
+      const trimmed = prev.trim();
+      if (!trimmed) {
+        return `${tagPrefix}：`;
+      }
+      return `${trimmed}\n${tagPrefix}：`;
+    });
+    setIsNotesExpanded(true);
+  };
 
   if (!isOpen || !manuscript) return null;
 
@@ -103,6 +144,7 @@ export const ImportAssistantModal: React.FC<ImportAssistantModalProps> = ({
 
     await onApplyProfile(manuscript.id, {
       synopsis: applySynopsis ? synopsis : undefined,
+      notes: applySynopsis && profileResult?.themeAnalysis ? profileResult.themeAnalysis : undefined,
       characters: selectedChars,
       motifs: selectedMotifs,
       sceneSplits: applySplits && sceneSplits.length > 1 ? sceneSplits : undefined,
@@ -160,17 +202,23 @@ export const ImportAssistantModal: React.FC<ImportAssistantModalProps> = ({
               <div>
                 <span className="font-bold text-ink">《{manuscript.title}》</span>
                 <span className="text-ink-muted ml-2 font-mono text-[11px]">
-                  正文字数: ~{sceneContent.length} 字
+                  全篇字数: ~{manuscriptContent.length} 字{scenesCount > 1 ? `（共 ${scenesCount} 场）` : ''}
                 </span>
+                {hasAppliedNotes && userNotes.trim() && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-cinnabar/10 text-cinnabar text-[10px] rounded border border-cinnabar/20 inline-flex items-center space-x-0.5">
+                    <Check className="w-2.5 h-2.5" />
+                    <span>已融合批注</span>
+                  </span>
+                )}
               </div>
             </div>
             <button
-              onClick={handleTriggerProfiling}
+              onClick={() => handleTriggerProfiling()}
               disabled={isLoading}
               className="px-2.5 py-1 bg-paper hover:bg-paper-raise border border-line-strong text-ink text-[11px] rounded transition-colors disabled:opacity-50 flex items-center space-x-1"
             >
-              <Sparkles className="w-3 h-3 text-cinnabar" />
-              <span>{isLoading ? '正在分析……' : '重新分析'}</span>
+              <RefreshCw className={`w-3 h-3 text-cinnabar ${isLoading ? 'animate-spin' : ''}`} />
+              <span>{isLoading ? '正在分析……' : userNotes.trim() ? '带批重新分析' : '重新分析'}</span>
             </button>
           </div>
 
@@ -178,9 +226,16 @@ export const ImportAssistantModal: React.FC<ImportAssistantModalProps> = ({
           {isLoading && (
             <div className="py-12 flex flex-col items-center justify-center space-y-3">
               <div className="w-7 h-7 border-2 border-cinnabar border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-ink-muted font-serif text-xs">
-                正在通读全篇，提炼故事梗概、人物声线、核心意象与分场结构……
+              <p className="text-ink text-xs font-serif font-medium text-center">
+                {userNotes.trim()
+                  ? '正在结合创作者批注，对全篇人物、意象与结构进行精准重构与解构……'
+                  : '正在通读全篇，提炼故事梗概、人物声线、核心意象与分场结构……'}
               </p>
+              {userNotes.trim() && (
+                <p className="text-ink-muted text-[10px] font-serif max-w-md text-center line-clamp-2 italic bg-paper-sunken px-3 py-1.5 rounded border border-line">
+                  批注指示：“{userNotes.trim()}”
+                </p>
+              )}
             </div>
           )}
 
@@ -188,14 +243,15 @@ export const ImportAssistantModal: React.FC<ImportAssistantModalProps> = ({
           {errorMsg && !isLoading && (
             <div className="p-4 bg-danger/10 border border-danger/30 rounded text-danger text-xs flex items-start space-x-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <div>
+              <div className="flex-1">
                 <div className="font-bold">建档分析遇到问题</div>
                 <div className="mt-1 text-[11px] leading-relaxed">{errorMsg}</div>
                 <button
-                  onClick={handleTriggerProfiling}
-                  className="mt-2 px-3 py-1 bg-paper text-ink border border-line rounded text-[11px]"
+                  onClick={() => handleTriggerProfiling()}
+                  className="mt-2 px-3 py-1 bg-paper text-ink border border-line rounded text-[11px] hover:bg-paper-raise transition-colors inline-flex items-center space-x-1"
                 >
-                  重试
+                  <RefreshCw className="w-3 h-3 text-cinnabar" />
+                  <span>{userNotes.trim() ? '带批注重试' : '重试'}</span>
                 </button>
               </div>
             </div>
@@ -203,22 +259,74 @@ export const ImportAssistantModal: React.FC<ImportAssistantModalProps> = ({
 
           {/* Initial Pre-analysis Callout */}
           {!profileResult && !isLoading && !errorMsg && (
-            <div className="py-10 flex flex-col items-center justify-center text-center space-y-4 max-w-md mx-auto">
+            <div className="py-6 flex flex-col items-center justify-center text-center space-y-4 max-w-lg mx-auto">
               <div className="w-12 h-12 rounded-full bg-paper-sunken flex items-center justify-center border border-line">
                 <Sparkles className="w-6 h-6 text-cinnabar" />
               </div>
               <div className="space-y-1.5">
                 <h3 className="font-bold text-ink text-sm">启动 AI 严肃文学建档</h3>
                 <p className="text-ink-muted text-[11px] leading-relaxed">
-                  AI 将通读文稿《{manuscript.title}》（共 ~{sceneContent.length} 字），提炼出【故事梗概与深层矛盾】、【人物小传与对白声线】、【核心意象网络】以及【长文智能分场建议】。
+                  AI 将通读整部书稿《{manuscript.title}》（{scenesCount > 1 ? `共 ${scenesCount} 场，` : ''}约 {manuscriptContent.length} 字），提炼出【故事梗概与深层矛盾】、【人物小传与对白声线】、【核心意象网络】以及【长文智能分场建议】。
                 </p>
               </div>
+
+              {/* Pre-run User Annotations / Guidance */}
+              <div className="w-full text-left bg-paper-sunken/70 border border-line rounded-lg p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-ink flex items-center space-x-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-cinnabar" />
+                    <span>建档批注与创作指引（选填）</span>
+                  </label>
+                  <span className="text-[10px] text-ink-faint">提前指导 AI 提炼侧重</span>
+                </div>
+
+                <textarea
+                  value={userNotes}
+                  onChange={(e) => setUserNotes(e.target.value)}
+                  rows={3}
+                  placeholder="可输入核心人物姓名/身份关系、需要着重关注的意象、主题偏好或分场要求……（例如：主角是陈默，修正旁白里的李医生不是主角；重点提炼生锈怀表与雨水意象）"
+                  className="w-full p-2 bg-paper border border-line rounded text-ink focus:outline-none text-[11px] leading-relaxed resize-none"
+                />
+
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  <span className="text-[10px] text-ink-faint">快捷插入：</span>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertTag('【人物关系】')}
+                    className="px-2 py-0.5 bg-paper hover:bg-paper-raise border border-line rounded text-[10px] text-ink-muted hover:text-ink transition-colors"
+                  >
+                    + 人物关系
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertTag('【核心意象】')}
+                    className="px-2 py-0.5 bg-paper hover:bg-paper-raise border border-line rounded text-[10px] text-ink-muted hover:text-ink transition-colors"
+                  >
+                    + 核心意象
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertTag('【梗概侧重】')}
+                    className="px-2 py-0.5 bg-paper hover:bg-paper-raise border border-line rounded text-[10px] text-ink-muted hover:text-ink transition-colors"
+                  >
+                    + 梗概侧重
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertTag('【分场指示】')}
+                    className="px-2 py-0.5 bg-paper hover:bg-paper-raise border border-line rounded text-[10px] text-ink-muted hover:text-ink transition-colors"
+                  >
+                    + 分场指示
+                  </button>
+                </div>
+              </div>
+
               <button
-                onClick={handleTriggerProfiling}
-                className="px-4 py-2 bg-cinnabar hover:bg-cinnabar-strong text-white font-medium rounded shadow-xs text-xs flex items-center space-x-1.5 transition-colors"
+                onClick={() => handleTriggerProfiling()}
+                className="px-5 py-2 bg-cinnabar hover:bg-cinnabar-strong text-white font-medium rounded shadow-xs text-xs flex items-center space-x-1.5 transition-colors"
               >
                 <Sparkles className="w-4 h-4" />
-                <span>开始深度建档与解构</span>
+                <span>{userNotes.trim() ? '按批注开始深度建档' : '开始深度建档与解构'}</span>
               </button>
             </div>
           )}
@@ -226,6 +334,104 @@ export const ImportAssistantModal: React.FC<ImportAssistantModalProps> = ({
           {/* Result Content */}
           {profileResult && !isLoading && (
             <>
+              {/* User Annotation & Regeneration Section */}
+              <div className="bg-paper-sunken rounded-lg border border-line p-3 space-y-2.5 transition-all">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-cinnabar" />
+                    <span className="font-bold text-ink text-xs">用户建档批注与精准重构</span>
+                    {hasAppliedNotes && userNotes.trim() && (
+                      <span className="px-1.5 py-0.2 bg-cinnabar/10 text-cinnabar text-[10px] rounded border border-cinnabar/20 inline-flex items-center space-x-0.5">
+                        <Check className="w-2.5 h-2.5" />
+                        <span>已按批注重构</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    {userNotes.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setUserNotes('')}
+                        className="text-[10px] text-ink-faint hover:text-danger transition-colors"
+                      >
+                        清空批注
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsNotesExpanded(!isNotesExpanded)}
+                      className="text-ink-muted hover:text-ink text-[11px] flex items-center space-x-0.5"
+                    >
+                      <span>{isNotesExpanded ? '收起批注' : '展开批注'}</span>
+                      {isNotesExpanded ? (
+                        <ChevronUp className="w-3 h-3" />
+                      ) : (
+                        <ChevronDown className="w-3 h-3" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {isNotesExpanded && (
+                  <div className="space-y-2 pt-0.5">
+                    <p className="text-[10px] text-ink-muted leading-tight">
+                      若 AI 提炼的人物关系有偏差、遗漏了关键意象或梗概理解不准，请在此输入批注。点击「带批注重新生成」，AI 将严格按你的要求重新解构全文：
+                    </p>
+
+                    <textarea
+                      value={userNotes}
+                      onChange={(e) => setUserNotes(e.target.value)}
+                      rows={3}
+                      placeholder="例如：&#10;1. 【人物】：林岚与陆舟是失散多年的兄妹，并非夫妻。&#10;2. 【意象】：重点提炼'雨水'与'生锈钥匙'的隐喻。&#10;3. 【梗概】：强化拆迁前夕主人公内心的道德挣扎与救赎。"
+                      className="w-full p-2 bg-paper border border-line rounded text-ink focus:outline-none text-[11px] leading-relaxed resize-none"
+                    />
+
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] text-ink-faint">快捷前缀：</span>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertTag('【人物修正】')}
+                          className="px-2 py-0.5 bg-paper hover:bg-paper-raise border border-line rounded text-[10px] text-ink-muted hover:text-ink transition-colors"
+                        >
+                          + 人物修正
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertTag('【核心意象】')}
+                          className="px-2 py-0.5 bg-paper hover:bg-paper-raise border border-line rounded text-[10px] text-ink-muted hover:text-ink transition-colors"
+                        >
+                          + 核心意象
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertTag('【梗概侧重】')}
+                          className="px-2 py-0.5 bg-paper hover:bg-paper-raise border border-line rounded text-[10px] text-ink-muted hover:text-ink transition-colors"
+                        >
+                          + 梗概侧重
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertTag('【分场指示】')}
+                          className="px-2 py-0.5 bg-paper hover:bg-paper-raise border border-line rounded text-[10px] text-ink-muted hover:text-ink transition-colors"
+                        >
+                          + 分场指示
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => handleTriggerProfiling()}
+                        disabled={isLoading}
+                        className="px-3 py-1 bg-cinnabar hover:bg-cinnabar-strong text-white text-[11px] font-medium rounded shadow-xs transition-colors disabled:opacity-50 flex items-center space-x-1 ml-auto"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>{userNotes.trim() ? '带批注重新生成' : '重新生成建档'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
               {/* Tab navigation */}
               <div className="flex items-center space-x-1 border-b border-line pb-1 text-xs">
                 <button
@@ -535,10 +741,12 @@ export const ImportAssistantModal: React.FC<ImportAssistantModalProps> = ({
                       />
                       <div>
                         <div className="font-bold text-ink">
-                          采用智能分场重构（将文稿切分为 {sceneSplits.length} 个独立场景）
+                          采用智能分场重构（将整篇文稿重构为 {sceneSplits.length} 个独立场景）
                         </div>
                         <p className="text-[11px] text-ink-muted leading-relaxed mt-0.5">
-                          适合多章节长文。勾选后将自动按以下切分创建场景，并保留各场段落完整性。
+                          {scenesCount > 1
+                            ? `当前书稿已有 ${scenesCount} 个场景。若勾选此项，将用 AI 提炼的 ${sceneSplits.length} 个新场景替换现有分场结构；若不勾选，将仅更新梗概、人物与意象（推荐保留现有分场）。`
+                            : '适合初次导入的长篇未分段文稿。勾选后将自动创建多场景并保留段落完整性。'}
                         </p>
                       </div>
                     </label>

@@ -1,4 +1,4 @@
-import type { ContextSelectionConfig, Manuscript, Scene } from '../types';
+import type { ContextSelectionConfig, Manuscript, Scene, ContextPolicy } from '../types';
 import { estimateTokenCount } from '../providers/base';
 import { extractPlainText } from './textProjection';
 
@@ -180,6 +180,71 @@ export function buildLiteraryContext(
     totalTokens,
     sections,
   };
+}
+
+/**
+ * Resolves the effective ContextSelectionConfig by combining the base/UI config
+ * with an optional model/task contextPolicy.
+ * If policy is 'ui_default' or undefined, returns baseConfig as-is.
+ * Otherwise, returns the policy-defined configuration.
+ */
+export function resolveEffectiveContextConfig(
+  baseConfig: ContextSelectionConfig,
+  policy?: ContextPolicy
+): ContextSelectionConfig {
+  if (!policy || policy === 'ui_default') {
+    return baseConfig;
+  }
+
+  switch (policy) {
+    case 'selection_only':
+      return {
+        includeSelectedText: true,
+        includeCurrentScene: false,
+        includePreviousScene: false,
+        includeCharacterNotes: false,
+        includeMotifs: false,
+        includeEntireManuscript: false,
+      };
+    case 'current_scene_only':
+      return {
+        includeSelectedText: true,
+        includeCurrentScene: true,
+        includePreviousScene: false,
+        includeCharacterNotes: false,
+        includeMotifs: false,
+        includeEntireManuscript: false,
+      };
+    case 'scene_and_notes':
+      return {
+        includeSelectedText: true,
+        includeCurrentScene: true,
+        includePreviousScene: false,
+        includeCharacterNotes: true,
+        includeMotifs: true,
+        includeEntireManuscript: false,
+      };
+    case 'scene_and_preceding':
+      return {
+        includeSelectedText: true,
+        includeCurrentScene: true,
+        includePreviousScene: true,
+        includeCharacterNotes: true,
+        includeMotifs: true,
+        includeEntireManuscript: false,
+      };
+    case 'full_manuscript':
+      return {
+        includeSelectedText: true,
+        includeCurrentScene: true,
+        includePreviousScene: true,
+        includeCharacterNotes: true,
+        includeMotifs: true,
+        includeEntireManuscript: true,
+      };
+    default:
+      return baseConfig;
+  }
 }
 
 /**

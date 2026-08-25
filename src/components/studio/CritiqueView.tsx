@@ -40,17 +40,17 @@ export const CritiqueView: React.FC<CritiqueViewProps> = ({
       case 'cut':
         return <Scissors className="w-3.5 h-3.5 text-danger" />;
       case 'language':
-        return <Feather className="w-3.5 h-3.5 text-[#5D4037]" />;
+        return <Feather className="w-3.5 h-3.5 text-ink-muted" />;
       case 'rhythm':
-        return <Activity className="w-3.5 h-3.5 text-[#455A64]" />;
+        return <Activity className="w-3.5 h-3.5 text-ink-muted" />;
       case 'dialogue':
-        return <MessageSquare className="w-3.5 h-3.5 text-[#00695C]" />;
+        return <MessageSquare className="w-3.5 h-3.5 text-ink-muted" />;
       case 'imagery':
-        return <Eye className="w-3.5 h-3.5 text-[#6A1B9A]" />;
+        return <Eye className="w-3.5 h-3.5 text-ink-muted" />;
       case 'distance':
-        return <Compass className="w-3.5 h-3.5 text-[#E65100]" />;
+        return <Compass className="w-3.5 h-3.5 text-ink-muted" />;
       default:
-        return <FileText className="w-3.5 h-3.5 text-[#37474F]" />;
+        return <FileText className="w-3.5 h-3.5 text-ink-muted" />;
     }
   };
 

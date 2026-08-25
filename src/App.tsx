@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useManuscript } from './hooks/useManuscript';
 import { useCritique } from './hooks/useCritique';
 import { useRevision } from './hooks/useRevision';
@@ -14,7 +14,8 @@ import { NotesModal } from './components/settings/NotesModal';
 import { ImportAssistantModal } from './components/settings/ImportAssistantModal';
 import { applyQuoteReplacement } from './utils/diff';
 import type { CritiqueCategory, RevisionSnapshot } from './types';
-import { Feather, Plus, Upload, BookOpen, Sparkles, X } from 'lucide-react';
+import { Plus, Upload, BookOpen, Sparkles, X, Minimize2 } from 'lucide-react';
+import { VersoLogo } from './components/layout/VersoLogo';
 
 export function App() {
   const {
@@ -99,13 +100,37 @@ export function App() {
   const [isImportAssistantOpen, setIsImportAssistantOpen] = useState(false);
   const [importBanner, setImportBanner] = useState<{ title: string; wordCount: number } | null>(null);
 
+  // Focus Mode Toast Notification
+  const [showFocusToast, setShowFocusToast] = useState(false);
+  const prevFocusRef = useRef(settings.focusMode);
+
+  useEffect(() => {
+    if (!prevFocusRef.current && settings.focusMode) {
+      setShowFocusToast(true);
+      const timer = setTimeout(() => setShowFocusToast(false), 2600);
+      return () => clearTimeout(timer);
+    }
+    prevFocusRef.current = settings.focusMode;
+  }, [settings.focusMode]);
+
   // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLensEditorOpen, setIsLensEditorOpen] = useState(false);
   const [isPromptLibraryOpen, setIsPromptLibraryOpen] = useState(false);
   const [isRevisionsOpen, setIsRevisionsOpen] = useState(false);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
-  const [notesDefaultTab, setNotesDefaultTab] = useState<'characters' | 'motifs'>('characters');
+  const [notesDefaultTab, setNotesDefaultTab] = useState<'synopsis' | 'characters' | 'motifs'>('synopsis');
+
+  // Full text of the manuscript across all scenes in sequential order for whole-book profiling
+  const fullManuscriptContent = useMemo(() => {
+    if (!scenes || scenes.length === 0) return '';
+    return scenes
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.content)
+      .filter(Boolean)
+      .join('\n\n');
+  }, [scenes]);
 
   // Handle floating selection action
   const handleSelectionAction = useCallback(
@@ -246,6 +271,38 @@ export function App() {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdKey = isMac ? e.metaKey : e.ctrlKey;
 
+      if (e.key === 'Escape') {
+        if (isSettingsOpen) {
+          setIsSettingsOpen(false);
+          return;
+        }
+        if (isLensEditorOpen) {
+          setIsLensEditorOpen(false);
+          return;
+        }
+        if (isPromptLibraryOpen) {
+          setIsPromptLibraryOpen(false);
+          return;
+        }
+        if (isRevisionsOpen) {
+          setIsRevisionsOpen(false);
+          return;
+        }
+        if (isNotesOpen) {
+          setIsNotesOpen(false);
+          return;
+        }
+        if (isImportAssistantOpen) {
+          setIsImportAssistantOpen(false);
+          return;
+        }
+        if (settings.focusMode) {
+          e.preventDefault();
+          updateSettings({ ...settings, focusMode: false });
+          return;
+        }
+      }
+
       if (cmdKey && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         setIsSidebarOpen((prev) => !prev);
@@ -268,7 +325,18 @@ export function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settings, updateSettings, addRevision, activeScene]);
+  }, [
+    settings,
+    updateSettings,
+    addRevision,
+    activeScene,
+    isSettingsOpen,
+    isLensEditorOpen,
+    isPromptLibraryOpen,
+    isRevisionsOpen,
+    isNotesOpen,
+    isImportAssistantOpen,
+  ]);
 
   // First-time onboarding: prompt user to set up API Key / Profile if none exists
   useEffect(() => {
@@ -316,10 +384,34 @@ export function App() {
           }
           focusMode={settings.focusMode}
           onToggleFocus={() => updateSettings({ ...settings, focusMode: !settings.focusMode })}
-          isLocalOnly={settings.localOnlyMode}
           activeProfileName={activeProfile?.name || '未配置'}
           onOpenSettings={() => setIsSettingsOpen(true)}
         />
+      )}
+
+      {/* Focus Mode Overlay Controls (Floating Exit Button & Hint) */}
+      {isFocusMode && (
+        <>
+          {showFocusToast && (
+            <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-ink text-paper px-4 py-2 rounded-full shadow-xl text-xs font-serif flex items-center space-x-2 animate-in fade-in slide-in-from-top-2 duration-200 pointer-events-none border border-line-strong">
+              <span>已进入全屏专注模式 · 按 <strong>Esc</strong> 或点击右上角退出</span>
+            </div>
+          )}
+
+          <div className="fixed top-3.5 right-4 z-40 flex items-center space-x-2 animate-in fade-in duration-200">
+            <button
+              onClick={() => updateSettings({ ...settings, focusMode: false })}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-paper/90 hover:bg-paper-raise border border-line shadow-xs hover:shadow-md text-ink-muted hover:text-ink transition-all duration-200 backdrop-blur-xs font-serif text-xs opacity-40 hover:opacity-100 group cursor-pointer"
+              title="退出全屏专注模式 (Esc / Cmd+Shift+F)"
+            >
+              <Minimize2 className="w-3.5 h-3.5 group-hover:text-cinnabar transition-colors" />
+              <span className="tracking-wide">退出专注</span>
+              <kbd className="hidden sm:inline-block text-[10px] font-mono px-1.5 py-0.2 bg-paper-sunken rounded border border-line text-ink-muted">
+                Esc
+              </kbd>
+            </button>
+          </div>
+        </>
       )}
 
       {/* Main Workspace (3 Columns) */}
@@ -344,6 +436,10 @@ export function App() {
             onDeleteScene={deleteScene}
             onRenameScene={renameScene}
             onOpenRevisions={() => setIsRevisionsOpen(true)}
+            onOpenSynopsis={() => {
+              setNotesDefaultTab('synopsis');
+              setIsNotesOpen(true);
+            }}
             onOpenCharacterNotes={() => {
               setNotesDefaultTab('characters');
               setIsNotesOpen(true);
@@ -394,8 +490,8 @@ export function App() {
             /* Welcome / Empty State */
             <div className="flex-1 flex flex-col items-center justify-center p-8 overflow-y-auto font-serif select-none">
               <div className="max-w-md w-full text-center space-y-6 animate-in fade-in duration-300">
-                <div className="w-14 h-14 mx-auto rounded-full bg-paper-sunken flex items-center justify-center border border-line">
-                  <Feather className="w-7 h-7 text-cinnabar" />
+                <div className="mx-auto flex items-center justify-center">
+                  <VersoLogo size={52} />
                 </div>
 
                 <div className="space-y-2">
@@ -403,7 +499,7 @@ export function App() {
                     展开稿纸，开始写作
                   </h2>
                   <p className="text-xs text-ink-muted leading-relaxed">
-                    Verso 是面向严肃文学创作者的沉浸式工作台。零预置项目，所有文本完全在本地浏览器存储，由您自主掌控。
+                    Verso 是面向严肃文学创作者的沉浸式工作台。纯本地沙箱存储，由您自主掌控。
                   </p>
                 </div>
 
@@ -617,7 +713,8 @@ export function App() {
         isOpen={isImportAssistantOpen}
         onClose={() => setIsImportAssistantOpen(false)}
         manuscript={manuscript}
-        sceneContent={activeScene ? activeScene.content : ''}
+        manuscriptContent={fullManuscriptContent}
+        scenesCount={scenes.length}
         isLoading={isProfilingLoading}
         onRunProfile={runManuscriptProfile}
         onApplyProfile={applyProfilingData}
