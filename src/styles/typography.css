@@ -1,0 +1,92 @@
+@layer base {
+  .font-serif {
+    font-family: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', SimSun, 'EB Garamond', Georgia, serif;
+  }
+
+  .font-kaiti {
+    font-family: 'LXGW WenKai', 'KaiTi', 'STKaiti', '楷体', 'Noto Serif SC', serif;
+  }
+
+  .font-sans {
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Inter', sans-serif;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, Monaco, Consolas, monospace;
+  }
+}
+
+/* TipTap ProseMirror Typography & Chinese paragraph rhythm */
+.ProseMirror {
+  outline: none;
+  font-feature-settings: "palt" 1;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  caret-color: var(--cinnabar);
+}
+
+.ProseMirror p {
+  margin-top: 1.25em;
+  margin-bottom: 1.25em;
+  text-align: justify;
+  text-justify: inter-ideograph;
+  letter-spacing: 0.04em;
+  line-height: 1.9;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--ink-faint);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Headings read as section breaks, not document chrome. */
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3 {
+  font-family: 'Noto Serif SC', 'Songti SC', serif;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  margin-top: 1.75em;
+  margin-bottom: 0.6em;
+}
+.ProseMirror h1 { font-size: 1.35em; }
+.ProseMirror h2 { font-size: 1.2em; }
+.ProseMirror h3 { font-size: 1.1em; }
+
+/* Blockquote: a pulled passage, not a callout box. */
+.ProseMirror blockquote {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 1em;
+  margin-left: 0;
+  color: var(--ink-muted);
+  font-style: normal;
+}
+
+/* Focus mode spotlight */
+.focus-mode-active .ProseMirror p {
+  opacity: 0.25;
+}
+
+.focus-mode-active .ProseMirror p:hover,
+.focus-mode-active .ProseMirror p:focus-within {
+  opacity: 1;
+}
+
+/* Highlight mark → a proofreader's cinnabar under-rule, not a yellow blob. */
+mark {
+  background-color: transparent;
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-color: var(--cinnabar);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+.dark mark {
+  text-decoration-color: var(--cinnabar);
+}

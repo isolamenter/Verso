@@ -1,0 +1,137 @@
+@import "tailwindcss";
+@import "./styles/typography.css";
+
+/* Class-based dark mode — the "ink" paper theme adds `.dark` on the app root. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+   Verso design tokens — ink on paper, with a single cinnabar "red pencil"
+   reserved for the act of editing (selection, critique, cut, critical marks).
+   Everything else stays monochrome. Values flip under `.dark`.
+--------------------------------------------------------------------------- */
+:root {
+  --paper: #fbf9f3;          /* rice paper */
+  --paper-raise: #f4f0e7;    /* raised surface (sidebar, modals) */
+  --paper-sunken: #ece6d9;   /* sunken surface (hover, inset panels) */
+
+  --ink: #26221c;            /* primary text / ink */
+  --ink-muted: #6e675a;      /* secondary text */
+  --ink-faint: #a69d8d;      /* tertiary text, placeholders */
+
+  --line: #e7e1d2;           /* hairline borders */
+  --line-strong: #d4cdb9;    /* input borders, strong hairlines */
+
+  --cinnabar: #b8452e;       /* 朱砂 — the editor's red pencil */
+  --cinnabar-strong: #9d3a25;
+  --cinnabar-soft: #f6e7e1;  /* red tint */
+
+  --ok: #3a7d44;             /* accepted / safe */
+  --warn: #a87600;           /* warning / medium */
+  --danger: #c03d2a;         /* destructive / critical */
+
+  color-scheme: light;
+}
+
+.dark {
+  --paper: #171410;
+  --paper-raise: #1e1a15;
+  --paper-sunken: #272219;
+
+  --ink: #e9e2d2;
+  --ink-muted: #a69d8d;
+  --ink-faint: #756d5e;
+
+  --line: #2b261e;
+  --line-strong: #3a3328;
+
+  --cinnabar: #cf6549;
+  --cinnabar-strong: #de7557;
+  --cinnabar-soft: #3b241c;
+
+  --ok: #6fb87a;
+  --warn: #d2a63c;
+  --danger: #e06a4f;
+
+  color-scheme: dark;
+}
+
+/* Surface the tokens as Tailwind color utilities (bg-paper, text-ink, …). */
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-raise: var(--paper-raise);
+  --color-paper-sunken: var(--paper-sunken);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-cinnabar: var(--cinnabar);
+  --color-cinnabar-strong: var(--cinnabar-strong);
+  --color-cinnabar-soft: var(--cinnabar-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    overflow: hidden;
+    font-feature-settings: 'palt' 1;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* A selection is a red-pencil sweep, not a yellow highlighter. */
+  ::selection {
+    background-color: color-mix(in srgb, var(--cinnabar) 18%, transparent);
+    color: var(--ink);
+  }
+}
+
+/* Subtle scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink-muted) 32%, transparent);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ink-muted) 52%, transparent);
+  background-clip: padding-box;
+}
+
+/* Visible keyboard focus in the accent color. */
+:focus-visible {
+  outline: 2px solid var(--cinnabar);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Respect reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
