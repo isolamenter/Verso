@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: verso_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: verso
+      POSTGRES_PASSWORD: verso_dev_secret
+      POSTGRES_DB: verso
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - verso_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U verso -d verso"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: verso_web
+    restart: unless-stopped
+    environment:
+      VERSO_DATABASE_URL: postgres://verso:verso_dev_secret@postgres:5432/verso
+      VERSO_DATA_DIR: /data
+      VERSO_HOST: "0.0.0.0"
+      VERSO_PORT: 4173
+      VERSO_CONTAINER: "true"
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:4173:4173"
+    volumes:
+      - verso_asset_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: verso_worker
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    environment:
+      VERSO_DATABASE_URL: postgres://verso:verso_dev_secret@postgres:5432/verso
+      VERSO_DATA_DIR: /data
+      VERSO_CONTAINER: "true"
+      NODE_ENV: production
+    volumes:
+      - verso_asset_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  verso_postgres_data:
+    name: verso_postgres_data
+  verso_asset_data:
+    name: verso_asset_data
+

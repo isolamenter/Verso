@@ -1,0 +1,8 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "system_metadata" (
+	"key" text PRIMARY KEY NOT NULL,
+	"value" text NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+

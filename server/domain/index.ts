@@ -1,0 +1,44 @@
+export * from "./types";
+export * from "./transaction-helper";
+export * from "./project-repository";
+export * from "./agent-repository";
+export * from "./changeset-repository";
+export * from "./knowledge-repository";
+export * from "./memory-repository";
+export * from "./skill-repository";
+export * from "./manuscripts/manuscript-service";
+export * from "./change-sets/change-set-service";
+export * from "./knowledge/knowledge-service";
+export * from "./knowledge/media/asset-service";
+export * from "./retrieval/hierarchical-retriever";
+export * from "./memory/memory-service";
+export * from "./import/legacy-import-service";
+
+import { ProjectRepository } from "./project-repository";
+import { AgentRepository } from "./agent-repository";
+import { ChangeSetRepository } from "./changeset-repository";
+import { KnowledgeRepository } from "./knowledge-repository";
+import { MemoryRepository } from "./memory-repository";
+import { SkillRepository } from "./skill-repository";
+import { ManuscriptService, manuscriptService } from "./manuscripts/manuscript-service";
+import { ChangeSetService, changeSetService } from "./change-sets/change-set-service";
+import { KnowledgeService, knowledgeService } from "./knowledge/knowledge-service";
+import { AssetService, assetService } from "./knowledge/media/asset-service";
+import { HierarchicalRetriever, hierarchicalRetriever } from "./retrieval/hierarchical-retriever";
+import { MemoryService, memoryService } from "./memory/memory-service";
+import { LegacyImportService, legacyImportService } from "./import/legacy-import-service";
+
+export const projectRepository = new ProjectRepository();
+export const agentRepository = new AgentRepository();
+export const changeSetRepository = new ChangeSetRepository();
+export const knowledgeRepository = new KnowledgeRepository();
+export const memoryRepository = new MemoryRepository();
+export const skillRepository = new SkillRepository();
+export { manuscriptService, ManuscriptService };
+export { changeSetService, ChangeSetService };
+export { knowledgeService, KnowledgeService };
+export { assetService, AssetService };
+export { hierarchicalRetriever, HierarchicalRetriever };
+export { memoryService, MemoryService };
+export { legacyImportService, LegacyImportService };
+
