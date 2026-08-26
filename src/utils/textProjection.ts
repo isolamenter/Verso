@@ -439,6 +439,23 @@ export function findBestAnchorMatch(options: {
 }
 
 /**
+ * Computes how much of the full text is covered by the concatenation of scene
+ * split contents, after whitespace normalization (0~1). AI rewording lowers
+ * coverage — used as a warning in the 分场 tab, never a blocker.
+ */
+export function computeSplitCoverage(
+  fullText: string,
+  splits: { content: string }[]
+): number {
+  if (!fullText) return 1;
+  const norm = (s: string) => (extractPlainText(s) || '').replace(/\s+/g, '');
+  const fullNorm = norm(fullText);
+  if (!fullNorm) return 1;
+  const joinedNorm = splits.map((s) => norm(s.content || '')).join('');
+  return Math.min(1, joinedNorm.length / fullNorm.length);
+}
+
+/**
  * Converts plain text to HTML paragraphs for safe TipTap ingestion.
  * If the input is already a formatted HTML string (e.g. from Word import), returns it untouched.
  */

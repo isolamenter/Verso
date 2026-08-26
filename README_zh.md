@@ -28,7 +28,7 @@
 2. **审读先于生成 (Critique Before Generation)**：拒绝“描写生动”、“文笔优美”等无意义的廉价吹捧，以客观的文学机理剖析得失，先诊断病灶、再给阶梯修改建议。
 3. **极简减法剪裁 (Subtractive Editing)**：写作是做减法的艺术。AI 敏锐识别作者越俎代庖的情绪命名、概念暴露、冗余副词与陈词滥调，给出删削建议。
 4. **文学得失取舍 (Trade-off Analysis)**：任何文本修改皆有代价。AI 明确指出修改后获得了什么（如增加留白与冷感），同时牺牲了什么（如增加认知负荷或降低戏剧冲突）。
-5. **本地优先与绝对隐私 (Zero Server Privacy Guarantee)**：文稿全部保存在浏览器本地 IndexedDB 沙箱中；API Key 经由 WebCrypto AES-GCM 加密或仅存于当前会话内存，绝不上传自有服务器。
+5. **本地优先与绝对隐私 (Zero Server Privacy Guarantee)**：文稿全部保存在浏览器本地 IndexedDB 沙箱中；API Key 仅存于浏览器本地（localStorage / sessionStorage / 内存缓存），由浏览器直连所选服务商，绝不经过任何自有中转服务器。
 
 ---
 
@@ -70,7 +70,8 @@
 
 ### 5. 自由文学问答与创作讨论 (Ask & Inquire)
 * 右侧编辑室提供自由讨论面板，可针对具体字句进行深度文学探讨（如 *“为什么这一段显得悬浮？”*、*“哪一句最应该删？”*）。
-* **细粒度上下文检视 (Context Inspector)**：清晰呈现并允许勾选当前发送给大模型的上下文范围（选区段落、当前场景、前置场景、人物笔记）。
+* **细粒度上下文检视 (Context Inspector)**：清晰呈现并允许勾选当前发送给大模型的上下文范围（选区段落、当前场景、前置场景、人物笔记、意象网络、全书稿）。
+* **Profile 级上下文策略 (Context Policy)**：每个模型 Profile 还可绑定固定上下文策略 —— `仅选区`、`仅当前场景`、`场景 + 笔记`、`场景 + 前置场景`、`全书稿`，让长文本扫描保持确定性。
 
 ### 6. 文学透镜库 (Literary Lenses) 与提示词库 (Prompt Library)
 * 内置经典文学透镜：
@@ -89,35 +90,43 @@
 
 ### 8. 原子化快照与防丢版本管理 (Manuscript Revisions)
 * **恢复前自动备份快照 (Pre-restore Safety Snapshot)**：在回滚至任意历史版本前，系统自动生成“恢复前临时快照”，确保当前未保存的即兴灵感永不丢失。
-* **智能会话快照**：连续写作停顿（30秒）且编辑字数变动 ≥ 20 字时，自动生成会话快照。
+* **智能会话快照**：连续写作停顿（30 秒）且文本自上次快照后发生变化时，自动生成会话快照。
 * **实时连续保存与切换前 Flush**：1.5 秒防抖自动保存 + 场景切换、书稿切换、页面隐藏/关闭时自动执行 `flushAutosave` 强刷落库，确保打字永不丢失。
 * **快照分类管理**：支持快照手动里程碑命名、版本对比与一键安全还原。
 
 ### 9. 多格式导入与 AI 文学智能建档 (Multi-Format Import & Literary Profiling)
 * **多格式纯本地解析**：原生支持 `.txt`、`.md` 以及 `.docx` (Word 文档，基于纯客户端 `mammoth.js` 语义清洗解析，自动去除排版杂质与行内样式，100% 本地沙箱处理，绝不上云)。
-* **AI 文学建档与解构助手 (Manuscript Onboarding)**：
-  * **故事梗概与深层矛盾提炼**：自动提炼时空舞台、核心行动线与隐秘文学矛盾 (Subtext)。
-  * **人物小传与声线特征提取**：自动提取登场人物、性格质感、对白声线与潜台词习惯，一键写入文学备忘。
-  * **核心意象网络挖掘**：自动提取文本中反复出现的象征物、感官细节与互文频次。
-  * **长文智能分场切分 (Smart Scene Split)**：长篇小说自动按时空转换与章节标识拆分为独立场景大纲。
-  * **用户批注与精准重构 (User Annotations & Regeneration)**：支持在初次建档前或查看结果后输入创作者批注（如人物关系修正、核心意象偏好、梗概侧重与分场指示），结合快捷标签一键带批注重新生成，让建档结果完全符合创作者意图。
-  * **非侵入与创作者自决**：创作者自由勾选、按需修改预览，一键写入本地数据库。
+* **AI 文学建档与解构助手 (Manuscript Onboarding)**：文学备忘中五个独立模块，每项可单独「AI 生成」（通读全文提取）或「AI 精修」（以当前内容为基线、结合批注修订），不再需要全量重跑：
+  * **故事梗概**：自动提炼时空舞台、核心行动线与人际暗流；生成/精修后支持一键撤销 AI 修改。
+  * **深层主题剖析**：独立于创作备忘存储，提炼隐秘文学矛盾 (Subtext)，与创作者手写备忘互不干扰。
+  * **人物小传与声线特征**：提取登场人物、性格质感、对白声线与潜台词习惯；生成结果勾选后按名合并（大小写不敏感、别名感知去重），精修可合并重复条目并整体替换。
+  * **核心意象网络**：提取反复出现的象征物、感官细节与互文频次，同样支持按名去重合并与精修替换。
+  * **长文智能分场切分 (Smart Scene Split)**：按时空转换与章节标识全量切分为独立场景，正文逐字一致；应用前展示拼接覆盖率校验与可展开的正文预览，替换现有分场需二次确认；支持多轮「AI 精修」迭代调整切分边界。
+  * **用户批注与精准重构 (User Annotations & Regeneration)**：每个模块均可输入创作者批注（人物关系修正、意象偏好、梗概侧重与分场指示），结合快捷标签一键带批注生成或精修。
+
+### 10. 基于大纲的场景起草与故事生成 (Scene Drafting & Story Generation)
+* **全要素文学上下文绑定**：自动融合书稿故事梗概、深层主题矛盾、人物小传与声线、核心意象网络、前序场景结尾与当前场景大纲细纲。
+* **三大创作模式**：
+  * **全新起草整场 (Full Scene Draft)**：从开头落笔，完整铺展场景的时空入景、人际对话、张力发展与收束（支持精炼 ~800字、标准 ~1500字、详实 ~2500字档位）。
+  * **承接正文续写 (Continuation)**：紧密顺接已有正文末尾的语气、叙述距离与人物微动作，继续推进下一阶段情节。
+  * **骨架细节扩写 (Expansion)**：将提纲要点或选中文段展开为富含感官物性、心理暗流与环境细节的丰满文学段落。
+* **纯文学审美防护与文学机理小结**：严禁 AI 俗套词汇与翻译腔，坚持白描物性与对白潜台词；生成后自动输出文学构思说明与得失小结。
+* **多阶安全采纳与版本保护**：
+  * **流式打字渲染**：实时字数统计与即时打断。
+  * **替换当前场景**：自动生成前置防丢快照，写入修订单，随时一键还原。
+  * **追加到文末** / **保存为场景备选快照**：无缝归入版本管理，支持在「版本取舍」中双栏比对。
 
 ---
 
 ## 🔒 BYOK 安全机制与隐私边界
 
-Verso 采用严格的本地隐私架构，让创作者完全掌控自己的文稿与密钥：
+Verso 为纯客户端应用，不架设任何自有服务器，文稿与密钥完全掌控在创作者手中：
 
-| 存储模式 | 安全机制与说明 | 适用场景 |
-| :--- | :--- | :--- |
-| **仅会话保存 (Session Only)** | 凭证保存于当前内存与 SessionStorage（同标签页刷新保留，关闭标签页/浏览器或手动清理后彻底销毁）。 | **默认推荐**，公共电脑或高安全需求 |
-| **本地加密持久化 (Encrypted)** | 采用浏览器原生 WebCrypto API (AES-GCM 256 位，PBKDF2 10 万次迭代 + 独立随机 Salt/IV) 加密存储于浏览器本地沙箱。 | 个人私有电脑，免除重复配置 |
-| **纯本地离线模式 (Local-only)** | 物理切断所有云端端点连接，仅允许连接本地回环端点 (`localhost` / `127.0.0.1` 上的 Ollama 服务)。 | 绝密文稿创作与无网环境 |
-
-* **锁定 Profile 明确提示**：当本地加密密钥处于锁定状态时，编辑室会明确提示输入主口令解锁后使用。
-* **多 Provider 支持与任务路由**：支持 OpenAI、Anthropic (Claude 3.7 Sonnet)、Google Gemini (2.5 Flash / 2.0)、DeepSeek、OpenRouter、Ollama 及自定义兼容端点；可将不同任务（如冷读者、细修、速览）绑定至不同的模型 Profile。
-* **一键清除与导出脱敏**：设置中支持一键清除所有本地凭证；导出文稿项目时自动剔除所有密钥配置。
+* **浏览器沙箱密钥存储**：API Key 运行时缓存于内存，并持久化于浏览器 `localStorage`（读取时含 `sessionStorage` 回退），绝不上传任何服务器；设置中支持一键清除全部本地密钥。
+* **浏览器直连服务商**：AI 请求由浏览器直接发往您所选择的模型服务商，Verso 不架设任何中转、代理或遥测服务器。
+* **纯本地离线 (Ollama)**：Profile 可指向本地回环端点（`http://localhost:11434` 上的 Ollama 服务，如 Qwen 2.5、本地 DeepSeek 等），提示词与正文完全不离开本机，无需 Key。
+* **多 Provider 支持与任务路由**：支持 OpenAI (GPT-4o)、Anthropic (Claude 3.7 Sonnet)、Google Gemini (2.0 Flash / 2.5)、DeepSeek (V3 / R1)、OpenRouter、Ollama 及自定义兼容端点；每个 Profile 可独立配置最大输出 Token（默认 8192）与请求超时（默认 300 秒）；可将不同任务（如冷读者、细修、速览、本地隐私）绑定至不同的模型 Profile。
+* **导出脱敏**：导出文稿项目时自动剔除所有密钥配置。
 
 ---
 
@@ -154,17 +163,17 @@ Verso 采用严格的本地隐私架构，让创作者完全掌控自己的文�
 │   OpenAI • Claude • Gemini • Ollama • DeepSeek • OpenRouter │
 ├─────────────────────────────────────────────────────────────┤
 │                     Local Storage Layer                     │
-│    IndexedDB (Dexie.js)   •   WebCrypto (AES-GCM 256)       │
+│   IndexedDB (Dexie.js)  •  localStorage / sessionStorage    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 * **Core Framework**: React 19 + TypeScript 6
-* **Rich Text Engine**: Tiptap Editor (StarterKit, Highlight, Typography, CharacterCount)
+* **Rich Text Engine**: Tiptap Editor (StarterKit, Highlight, Typography, CharacterCount, Placeholder)
 * **Styling**: Tailwind CSS v4 + Lucide Icons
 * **Local Database**: Dexie.js (IndexedDB 沙箱存储，带 Autosave Flush)
 * **Diff & Splicing Algorithm**: diff-match-patch + 1-to-1 TipTap JSON 树 Range Splicer
-* **Cryptography**: Native WebCrypto API (AES-GCM 256 位 + PBKDF2 10 万次迭代)
-* **Build & Testing**: Vite 8 + Vitest (43 个单元/集成测试) + Oxlint
+* **API Key 存储**: 内存缓存 + localStorage / sessionStorage（浏览器沙箱）
+* **Build & Testing**: Vite 8 + Vitest (63 个单元/集成测试，13 个测试套件) + Oxlint
 
 ---
 

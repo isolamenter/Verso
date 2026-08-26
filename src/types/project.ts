@@ -36,6 +36,7 @@ export interface Manuscript {
   motifs: MotifItem[];
   characters: CharacterItem[];
   notes: string;
+  themeAnalysis?: string; // AI 提炼的深层文学矛盾剖析，与 notes（用户创作备忘）分离
   updatedAt: number;
   createdAt: number;
 }

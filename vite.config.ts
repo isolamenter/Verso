@@ -7,66 +7,51 @@ function terminalLogger(): Plugin {
     name: 'terminal-logger',
     apply: 'serve',
     configureServer(server) {
-      server.ws.on('terminal:log', (data: { type: 'log' | 'warn' | 'error' | 'info' | 'debug'; args: unknown[] }) => {
+      const handleLog = (data: { type: 'log' | 'warn' | 'error' | 'info' | 'debug'; args: unknown[] }) => {
+        if (!data || !data.type) return;
         const colorMap: Record<string, string> = {
           log: '\x1b[36m', // Cyan
           info: '\x1b[34m', // Blue
           warn: '\x1b[33m', // Yellow
           error: '\x1b[31m', // Red
           debug: '\x1b[90m', // Gray
-        }
-        const color = colorMap[data.type] || '\x1b[36m'
-        const reset = '\x1b[0m'
-        const tag = `${color}[Browser ${data.type.toUpperCase()}]${reset}`
+        };
+        const color = colorMap[data.type] || '\x1b[36m';
+        const reset = '\x1b[0m';
+        const tag = `${color}[Browser ${data.type.toUpperCase()}]${reset}`;
+
+        const formattedArgs = (data.args || []).map((arg) => {
+          if (arg && typeof arg === 'object') {
+            if ('stack' in (arg as any) && (arg as any).stack) {
+              return `${(arg as any).name || 'Error'}: ${(arg as any).message || ''}\n${(arg as any).stack}`;
+            }
+            if ('message' in (arg as any)) {
+              return `${(arg as any).name || 'Error'}: ${(arg as any).message}`;
+            }
+            try {
+              return JSON.stringify(arg, null, 2);
+            } catch {
+              return String(arg);
+            }
+          }
+          return arg;
+        });
 
         if (data.type === 'error') {
-          console.error(tag, ...data.args)
+          console.error(tag, ...formattedArgs);
         } else if (data.type === 'warn') {
-          console.warn(tag, ...data.args)
+          console.warn(tag, ...formattedArgs);
         } else {
-          console.log(tag, ...data.args)
+          console.log(tag, ...formattedArgs);
         }
-      })
+      };
+
+      server.ws.on('terminal:log', handleLog);
+      if (server.hot) {
+        server.hot.on('terminal:log', handleLog);
+      }
     },
-    transformIndexHtml(_html) {
-      return [
-        {
-          tag: 'script',
-          attrs: { type: 'module' },
-          children: `
-            if (import.meta.hot) {
-              const methods = ['log', 'warn', 'error', 'info', 'debug'];
-              methods.forEach((type) => {
-                const original = console[type];
-                console[type] = (...args) => {
-                  original.apply(console, args);
-                  try {
-                    const serializedArgs = args.map((arg) => {
-                      if (arg instanceof Error) {
-                        return { message: arg.message, stack: arg.stack };
-                      }
-                      if (typeof arg === 'function') {
-                        return arg.toString();
-                      }
-                      if (typeof arg === 'object' && arg !== null) {
-                        try {
-                          return JSON.parse(JSON.stringify(arg));
-                        } catch {
-                          return String(arg);
-                        }
-                      }
-                      return arg;
-                    });
-                    import.meta.hot.send('terminal:log', { type, args: serializedArgs });
-                  } catch {}
-                };
-              });
-            }
-          `,
-        },
-      ]
-    },
-  }
+  };
 }
 
 // https://vite.dev/config/

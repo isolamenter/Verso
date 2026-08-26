@@ -23,6 +23,7 @@ export class AnthropicProvider implements LLMProvider {
       });
       return { ok: true, message: `Claude API 连接成功 (${this.profile.model})` };
     } catch (err: any) {
+      console.error('[Anthropic testConnection error]:', err);
       return { ok: false, message: err?.message || 'Claude 连接失败' };
     }
   }

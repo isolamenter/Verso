@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import type { Project, Manuscript, Scene } from '../../types';
+import type { Project, Manuscript, Scene, NotesTab } from '../../types';
 import {
   Plus,
   Trash2,
@@ -34,11 +34,8 @@ interface SidebarProps {
   onDeleteScene: (sceneId: string) => void;
   onRenameScene: (sceneId: string, newTitle: string) => void;
   onOpenRevisions: () => void;
-  onOpenSynopsis?: () => void;
-  onOpenCharacterNotes: () => void;
-  onOpenMotifs: () => void;
+  onOpenNotesTab: (tab: NotesTab) => void;
   onOpenPromptLibrary: () => void;
-  onOpenImportAssistant?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -58,11 +55,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeleteScene,
   onRenameScene,
   onOpenRevisions,
-  onOpenSynopsis,
-  onOpenCharacterNotes,
-  onOpenMotifs,
+  onOpenNotesTab,
   onOpenPromptLibrary,
-  onOpenImportAssistant,
 }) => {
   const [isScenesExpanded, setIsScenesExpanded] = useState(true);
   const [isNotesExpanded, setIsNotesExpanded] = useState(true);
@@ -154,26 +148,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center space-x-1 shrink-0 ml-1">
-            {onOpenImportAssistant && (
-              <button
-                onClick={onOpenImportAssistant}
-                disabled={!manuscript}
-                className="px-2 py-0.5 bg-cinnabar/10 hover:bg-cinnabar/20 text-cinnabar border border-cinnabar/20 rounded text-[10px] font-medium flex items-center space-x-1 transition-colors disabled:opacity-30"
-                title="全篇 AI 文学建档（提炼全书梗概、人物小传、意象网络与智能分场）"
-              >
-                <Sparkles className="w-3 h-3" />
-                <span>AI 建档</span>
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="p-1 text-ink-muted hover:text-ink rounded transition-colors"
-              title="收起侧栏 (Cmd/Ctrl + B)"
-            >
-              <PanelLeftClose className="w-4 h-4" />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="p-1 text-ink-muted hover:text-ink rounded transition-colors shrink-0 ml-1"
+            title="收起侧栏 (Cmd/Ctrl + B)"
+          >
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Manuscript Switcher & Creator Dropdown */}
@@ -283,6 +264,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
+              <button
+                onClick={() => onOpenNotesTab('scene_splits')}
+                disabled={!manuscript}
+                className="p-0.5 hover:bg-paper-sunken rounded text-cinnabar disabled:opacity-30"
+                title="AI 智能分场切分"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 
@@ -388,19 +377,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {isNotesExpanded && (
             <div className="mt-1 space-y-0.5">
               <button
-                onClick={onOpenSynopsis}
+                onClick={() => onOpenNotesTab('synopsis')}
                 disabled={!manuscript}
                 className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-left text-ink-muted hover:bg-paper-sunken/50 rounded transition-colors disabled:opacity-40"
               >
                 <BookOpen className="w-3.5 h-3.5 text-cinnabar" />
-                <span>故事梗概与主题</span>
+                <span>故事梗概</span>
                 <span className="ml-auto text-[10px] font-mono text-ink-faint">
-                  {manuscript?.synopsis || manuscript?.notes ? '已设' : '未设'}
+                  {manuscript?.synopsis ? '已设' : '未设'}
                 </span>
               </button>
 
               <button
-                onClick={onOpenCharacterNotes}
+                onClick={() => onOpenNotesTab('theme')}
+                disabled={!manuscript}
+                className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-left text-ink-muted hover:bg-paper-sunken/50 rounded transition-colors disabled:opacity-40"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-cinnabar" />
+                <span>主题剖析</span>
+                <span className="ml-auto text-[10px] font-mono text-ink-faint">
+                  {manuscript?.themeAnalysis ? '已设' : '未设'}
+                </span>
+              </button>
+
+              <button
+                onClick={() => onOpenNotesTab('characters')}
                 disabled={!manuscript}
                 className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-left text-ink-muted hover:bg-paper-sunken/50 rounded transition-colors disabled:opacity-40"
               >
@@ -412,7 +413,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
 
               <button
-                onClick={onOpenMotifs}
+                onClick={() => onOpenNotesTab('motifs')}
                 disabled={!manuscript}
                 className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-left text-ink-muted hover:bg-paper-sunken/50 rounded transition-colors disabled:opacity-40"
               >

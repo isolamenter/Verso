@@ -13,6 +13,7 @@ export type TaskBindingType =
   | 'line_editor'
   | 'quick_critique'
   | 'ask'
+  | 'scene_draft'
   | 'local_privacy';
 
 export type ApiKeyStorageMode = 'session' | 'encrypted_local' | 'local';

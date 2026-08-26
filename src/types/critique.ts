@@ -1,4 +1,4 @@
-import type { CharacterItem, MotifItem } from './project';
+import type { CharacterItem, MotifItem, Scene } from './project';
 
 export type CritiqueCategory =
   | 'critique'      // 文学综合审读 (叙述距离、冗余、情绪命名、戏剧张力)
@@ -115,13 +115,69 @@ export interface SceneSplitSuggestion {
   title: string;
   summary?: string;
   content: string;
+  startQuote?: string; // AI 返回的切分起始锚点片段，用于本地高保真切片
 }
 
-export interface ManuscriptProfileResult {
-  synopsis: string;
-  themeAnalysis?: string;
-  characters: CharacterItem[];
-  motifs: MotifItem[];
-  sceneSplits?: SceneSplitSuggestion[];
+// ---- Profiling modules (AI 建档五个独立模块) ----
+
+export type ProfilingModule =
+  | 'synopsis'      // 故事梗概
+  | 'theme'         // 深层主题剖析
+  | 'characters'    // 人物小传
+  | 'motifs'        // 核心意象网络
+  | 'scene_splits'; // 智能分场切分
+
+export type ProfilingMode = 'generate' | 'refine';
+
+/** NotesModal 五个 tab 与建档模块一一对应 */
+export type NotesTab = ProfilingModule;
+
+export type ProfilingCurrentValue =
+  | string          // synopsis / theme 当前文本
+  | CharacterItem[] // characters 当前列表
+  | MotifItem[]     // motifs 当前列表
+  | Scene[];        // scene_splits 当前场景（标题+正文边界作参考）
+
+export interface ProfilingRunParams {
+  mode: ProfilingMode;
+  /** refine 必填；generate 忽略 */
+  currentValue?: ProfilingCurrentValue;
+  /** 作者批注与修正要求，注入 prompt */
+  userNotes?: string;
 }
+
+export interface ProfilingModuleResultMap {
+  synopsis: { text: string };
+  theme: { text: string };
+  characters: { items: CharacterItem[] };
+  motifs: { items: MotifItem[] };
+  scene_splits: { splits: SceneSplitSuggestion[] };
+}
+
+// ---- Scene Drafting & Story Generation (场景起草与故事大段生成) ----
+
+export type SceneDraftMode = 'draft' | 'continuation' | 'expand';
+
+export type SceneDraftLength = 'short' | 'medium' | 'long';
+
+export interface SceneDraftParams {
+  mode: SceneDraftMode;
+  sceneTitle: string;
+  sceneOutline: string;              // 场景大纲 / 节拍要求
+  pov?: string;                      // 叙述视角 (如: 第三人称限知视角)
+  locationAndTime?: string;          // 时空与场景舞台 (如: 梅雨季傍晚 旧修鞋铺)
+  targetLength: SceneDraftLength;    // 篇幅档位 (short: ~800-1200, medium: ~1500-2500, long: ~2500-4000)
+  userNotes?: string;                // 创作者特别要求或批注
+  lensInstruction?: string;          // 文学透镜要求
+  existingContent?: string;          // 当前已有正文 (续写或扩写模式)
+  selectedText?: string;             // 针对选区的扩写/承接文段
+}
+
+export interface SceneDraftResult {
+  content: string;                   // 生成的小说正文
+  literaryNotes?: string;            // 本次生成的文学构思与得失小结
+  wordCount: number;                 // 字数
+}
+
+export type StudioTab = 'draft' | 'critique' | 'cold_reader' | 'intent' | 'compare' | 'ask';
 

@@ -23,7 +23,8 @@ import {
   ChevronUp,
   Replace,
   Undo,
-  Redo
+  Redo,
+  Sparkles
 } from 'lucide-react';
 
 interface EditorCanvasProps {
@@ -34,6 +35,7 @@ interface EditorCanvasProps {
     selectedText: string,
     range: { from: number; to: number }
   ) => void;
+  onOpenDraftStudio?: () => void;
   activeAnnotationQuote?: string | null;
   paperTheme: PaperTheme;
   typography: TypographyFamily;
@@ -47,6 +49,7 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
   content,
   onChange,
   onSelectionAction,
+  onOpenDraftStudio,
   activeAnnotationQuote,
   paperTheme,
   typography,
@@ -551,6 +554,30 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
               <Search className="w-3.5 h-3.5" />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Empty Scene Literary Prompt Card */}
+      {!focusMode && extractPlainText(content).trim().length === 0 && (
+        <div className="max-w-3xl mx-auto mb-6 p-4 bg-paper-sunken/60 border border-dashed border-line rounded-lg flex items-center justify-between font-serif text-xs text-ink-muted animate-in fade-in duration-200">
+          <div className="flex items-center space-x-2.5">
+            <Sparkles className="w-4 h-4 text-cinnabar shrink-0" />
+            <div>
+              <div className="font-bold text-ink text-xs">当前场景暂无正文</div>
+              <div className="text-[11px] text-ink-muted mt-0.5">
+                直接落笔写作，或在右侧编辑室基于大纲与人物设定起草场景初稿。
+              </div>
+            </div>
+          </div>
+          {onOpenDraftStudio && (
+            <button
+              onClick={onOpenDraftStudio}
+              className="px-3 py-1.5 bg-cinnabar hover:bg-cinnabar-strong text-white rounded text-xs font-medium transition-colors flex items-center space-x-1 shrink-0 shadow-xs cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>基于大纲起草场景</span>
+            </button>
+          )}
         </div>
       )}
 

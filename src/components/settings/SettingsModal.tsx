@@ -183,6 +183,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const res = await provider.testConnection();
       setTestResult(res);
     } catch (err: any) {
+      console.error('[Verso Settings: 测试连接异常]', err);
       setTestResult({ ok: false, message: err.message || '连接失败' });
     } finally {
       setIsTesting(false);
@@ -234,6 +235,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
       onClose();
     } catch (err: any) {
+      console.error('[Verso Settings: 保存设置失败]', err);
       alert(`保存密钥失败: ${err?.message || '未知错误'}`);
     }
   };

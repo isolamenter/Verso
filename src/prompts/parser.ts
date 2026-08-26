@@ -4,11 +4,15 @@ import type {
   ColdReaderReport,
   IntentEvaluation,
   VersionCompareReport,
-  ManuscriptProfileResult,
   CritiqueCategory,
-  SeverityLevel
+  SeverityLevel,
+  CharacterItem,
+  MotifItem,
+  SceneSplitSuggestion,
+  SceneDraftResult
 } from '../types';
 import { extractPlainText, findBestAnchorMatch } from '../utils/textProjection';
+import { dedupeByName } from '../utils/dedupe';
 
 /**
  * Extracts and cleans JSON from LLM responses (stripping markdown fences, trailing comments, etc.)
@@ -305,26 +309,47 @@ export function parseVersionCompareResponse(
   }
 }
 
+// ============================================================
+// 建档五模块独立 parser（沿用 cleanJsonString + 逐字段校验 + 中文兜底模式）
+// ============================================================
+
 /**
- * Parses Manuscript Profile & Deconstruction LLM response safely.
+ * Parses the synopsis module LLM response. JSON failure falls back to raw text.
  */
-export function parseManuscriptProfileResponse(
-  raw: string,
-  defaultTitle: string = ''
-): ManuscriptProfileResult {
+export function parseSynopsisResponse(raw: string, defaultTitle: string = ''): string {
   const cleaned = cleanJsonString(raw);
   try {
     const parsed = JSON.parse(cleaned);
+    if (typeof parsed.synopsis === 'string' && parsed.synopsis.trim()) {
+      return parsed.synopsis.trim();
+    }
+    return `文稿《${defaultTitle}》导入完成，待提炼故事梗概。`;
+  } catch {
+    return raw.trim() || `文稿《${defaultTitle}》`;
+  }
+}
 
-    const synopsis =
-      typeof parsed.synopsis === 'string' && parsed.synopsis.trim()
-        ? parsed.synopsis.trim()
-        : `文稿《${defaultTitle}》导入完成，待提炼故事梗概。`;
+/**
+ * Parses the theme module LLM response. JSON failure falls back to raw text.
+ */
+export function parseThemeResponse(raw: string): string {
+  const cleaned = cleanJsonString(raw);
+  try {
+    const parsed = JSON.parse(cleaned);
+    return typeof parsed.themeAnalysis === 'string' ? parsed.themeAnalysis.trim() : '';
+  } catch {
+    return raw.trim();
+  }
+}
 
-    const themeAnalysis =
-      typeof parsed.themeAnalysis === 'string' ? parsed.themeAnalysis.trim() : undefined;
-
-    const characters = Array.isArray(parsed.characters)
+/**
+ * Parses the characters module LLM response, with in-batch alias-aware dedupe.
+ */
+export function parseCharactersResponse(raw: string): CharacterItem[] {
+  const cleaned = cleanJsonString(raw);
+  try {
+    const parsed = JSON.parse(cleaned);
+    const items: CharacterItem[] = Array.isArray(parsed.characters)
       ? parsed.characters
           .filter((c: any) => c && typeof c.name === 'string' && c.name.trim())
           .map((c: any, idx: number) => ({
@@ -335,8 +360,20 @@ export function parseManuscriptProfileResponse(
             notes: typeof c.notes === 'string' ? c.notes.trim() : '',
           }))
       : [];
+    return dedupeByName(items, { matchAlias: true });
+  } catch {
+    return [];
+  }
+}
 
-    const motifs = Array.isArray(parsed.motifs)
+/**
+ * Parses the motifs module LLM response, with in-batch name dedupe.
+ */
+export function parseMotifsResponse(raw: string): MotifItem[] {
+  const cleaned = cleanJsonString(raw);
+  try {
+    const parsed = JSON.parse(cleaned);
+    const items: MotifItem[] = Array.isArray(parsed.motifs)
       ? parsed.motifs
           .filter((m: any) => m && typeof m.name === 'string' && m.name.trim())
           .map((m: any, idx: number) => ({
@@ -347,30 +384,207 @@ export function parseManuscriptProfileResponse(
               typeof m.occurrencesCount === 'number' ? m.occurrencesCount : undefined,
           }))
       : [];
-
-    const sceneSplits = Array.isArray(parsed.sceneSplits)
-      ? parsed.sceneSplits
-          .filter((s: any) => s && (s.content || s.title))
-          .map((s: any, idx: number) => ({
-            title: typeof s.title === 'string' && s.title.trim() ? s.title.trim() : `第 ${idx + 1} 场`,
-            summary: typeof s.summary === 'string' ? s.summary.trim() : undefined,
-            content: typeof s.content === 'string' ? s.content : '',
-          }))
-      : undefined;
-
-    return {
-      synopsis,
-      themeAnalysis,
-      characters,
-      motifs,
-      sceneSplits,
-    };
+    return dedupeByName(items);
   } catch {
+    return [];
+  }
+}
+
+/**
+ * Parses the scene_splits module LLM response and slices the source text losslessly.
+ */
+export function parseSceneSplitsResponse(
+  raw: string,
+  sourceText?: string
+): SceneSplitSuggestion[] {
+  const cleaned = cleanJsonString(raw);
+  try {
+    const parsed = JSON.parse(cleaned);
+    const rawSplits = Array.isArray(parsed.sceneSplits) ? parsed.sceneSplits : [];
+    const validRaw = rawSplits.filter(
+      (s: any) => s && (s.title || s.startQuote || s.content || s.summary)
+    );
+
+    if (validRaw.length === 0) {
+      return [];
+    }
+
+    const plainSource = typeof sourceText === 'string' ? sourceText : '';
+
+    // If no source text is provided, fallback to raw titles and content/startQuote
+    if (!plainSource.trim()) {
+      return validRaw.map((s: any, idx: number) => ({
+        title: typeof s.title === 'string' && s.title.trim() ? s.title.trim() : `第 ${idx + 1} 场`,
+        summary: typeof s.summary === 'string' ? s.summary.trim() : undefined,
+        content: typeof s.content === 'string' ? s.content : '',
+        startQuote: typeof s.startQuote === 'string' ? s.startQuote.trim() : undefined,
+      }));
+    }
+
+    // If only 1 scene or no anchors returned, whole sourceText belongs to scene 1
+    if (validRaw.length === 1) {
+      const s = validRaw[0];
+      return [
+        {
+          title: typeof s.title === 'string' && s.title.trim() ? s.title.trim() : '第一场',
+          summary: typeof s.summary === 'string' ? s.summary.trim() : undefined,
+          content: plainSource,
+          startQuote: typeof s.startQuote === 'string' ? s.startQuote.trim() : undefined,
+        },
+      ];
+    }
+
+    // Locate split offsets in plainSource monotonically
+    interface SplitAnchor {
+      title: string;
+      summary?: string;
+      startQuote?: string;
+      offset: number;
+    }
+
+    const anchors: SplitAnchor[] = [];
+    let searchStartPos = 0;
+
+    for (let i = 0; i < validRaw.length; i++) {
+      const rawItem = validRaw[i];
+      const title =
+        typeof rawItem.title === 'string' && rawItem.title.trim()
+          ? rawItem.title.trim()
+          : `第 ${i + 1} 场`;
+      const summary =
+        typeof rawItem.summary === 'string' ? rawItem.summary.trim() : undefined;
+      const startQuote =
+        typeof rawItem.startQuote === 'string' && rawItem.startQuote.trim()
+          ? rawItem.startQuote.trim()
+          : typeof rawItem.content === 'string' && rawItem.content.trim()
+            ? rawItem.content.trim().slice(0, 30)
+            : '';
+
+      if (i === 0) {
+        // First scene always starts at index 0
+        anchors.push({
+          title,
+          summary,
+          startQuote: startQuote || undefined,
+          offset: 0,
+        });
+        continue;
+      }
+
+      if (!startQuote) {
+        continue;
+      }
+
+      // 1. Try exact match from searchStartPos
+      let matchedPos = plainSource.indexOf(startQuote, searchStartPos);
+
+      // 2. If exact match fails, try best anchor match in the remaining text
+      if (matchedPos === -1) {
+        const remaining = plainSource.slice(searchStartPos);
+        const match = findBestAnchorMatch({
+          plainText: remaining,
+          quote: startQuote,
+        });
+        if (match.found && match.range.from >= 0) {
+          matchedPos = searchStartPos + match.range.from;
+        }
+      }
+
+      // 3. If still not found, try shorter prefix of startQuote
+      if (matchedPos === -1 && startQuote.length > 8) {
+        const shortQuote = startQuote.slice(0, 8);
+        matchedPos = plainSource.indexOf(shortQuote, searchStartPos);
+      }
+
+      if (matchedPos !== -1 && matchedPos > searchStartPos) {
+        anchors.push({
+          title,
+          summary,
+          startQuote,
+          offset: matchedPos,
+        });
+        searchStartPos = matchedPos;
+      }
+    }
+
+    // If no secondary split anchors could be matched, return full text as 1st scene
+    if (anchors.length <= 1) {
+      const s0 = validRaw[0];
+      return [
+        {
+          title: typeof s0.title === 'string' && s0.title.trim() ? s0.title.trim() : '第一场',
+          summary: typeof s0.summary === 'string' ? s0.summary.trim() : undefined,
+          content: plainSource,
+          startQuote: typeof s0.startQuote === 'string' ? s0.startQuote.trim() : undefined,
+        },
+      ];
+    }
+
+    // Slice plainSource into non-overlapping, gapless segments
+    const suggestions: SceneSplitSuggestion[] = [];
+    for (let i = 0; i < anchors.length; i++) {
+      const current = anchors[i];
+      const nextOffset =
+        i + 1 < anchors.length ? anchors[i + 1].offset : plainSource.length;
+      const content = plainSource.slice(current.offset, nextOffset);
+
+      suggestions.push({
+        title: current.title,
+        summary: current.summary,
+        content,
+        startQuote: current.startQuote,
+      });
+    }
+
+    return suggestions;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Parses Scene Draft LLM response into structured prose content and literary notes.
+ * Robust to JSON format, markdown fences, and raw prose output.
+ */
+export function parseSceneDraftResponse(raw: string): SceneDraftResult {
+  if (!raw || !raw.trim()) {
     return {
-      synopsis: raw.trim() || `文稿《${defaultTitle}》`,
-      characters: [],
-      motifs: [],
+      content: '',
+      wordCount: 0,
     };
   }
+
+  const trimmed = raw.trim();
+  const cleaned = cleanJsonString(trimmed);
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed.content === 'string' && parsed.content.trim()) {
+      const content = parsed.content.trim();
+      const literaryNotes =
+        typeof parsed.literaryNotes === 'string' && parsed.literaryNotes.trim()
+          ? parsed.literaryNotes.trim()
+          : undefined;
+
+      return {
+        content,
+        literaryNotes,
+        wordCount: content.length,
+      };
+    }
+  } catch {
+    // If not valid JSON, process as raw markdown/prose text
+  }
+
+  // Fallback: If model returned raw text directly (e.g. streaming or no JSON wrapper)
+  let text = trimmed;
+  if (text.startsWith('```')) {
+    text = text.replace(/^```(?:markdown|text)?\s*/i, '').replace(/\s*```$/, '');
+  }
+
+  return {
+    content: text.trim(),
+    wordCount: text.trim().length,
+  };
 }
 

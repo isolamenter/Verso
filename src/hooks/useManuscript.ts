@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { db, initDatabase } from '../db';
-import type { Project, Manuscript, Scene, AppSettings, CharacterItem, MotifItem } from '../types';
+import type { Project, Manuscript, Scene, AppSettings } from '../types';
 import { DEFAULT_SETTINGS } from '../db/initialData';
 import { calculateEditorStats } from '../utils/diff';
 import { extractPlainText } from '../utils/textProjection';
@@ -276,6 +276,7 @@ export function useManuscript() {
         motifs: [],
         characters: [],
         notes: '',
+        themeAnalysis: '',
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -331,6 +332,7 @@ export function useManuscript() {
         motifs: [],
         characters: [],
         notes: '',
+        themeAnalysis: '',
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -401,86 +403,50 @@ export function useManuscript() {
     [manuscript]
   );
 
-  // Apply AI Profiling Data (characters, motifs, synopsis, and optional smart scene split)
-  const applyProfilingData = useCallback(
+  // Replace the manuscript's scenes with AI scene split suggestions (destructive)
+  const applySceneSplits = useCallback(
     async (
       targetManuscriptId: string,
-      data: {
-        synopsis?: string;
-        notes?: string;
-        characters?: CharacterItem[];
-        motifs?: MotifItem[];
-        sceneSplits?: { title: string; content: string; summary?: string }[];
-      }
+      sceneSplits: { title: string; content: string; summary?: string }[]
     ) => {
-      const targetManu = manuscripts.find((m) => m.id === targetManuscriptId);
-      if (!targetManu) return;
+      if (!sceneSplits || sceneSplits.length <= 1) return;
 
-      const updatedManu: Partial<Manuscript> = {
-        updatedAt: Date.now(),
-      };
+      await flushAutosave();
 
-      if (data.synopsis !== undefined && data.synopsis.trim()) {
-        updatedManu.synopsis = data.synopsis.trim();
+      const currentManuScenes = await db.scenes
+        .where('manuscriptId')
+        .equals(targetManuscriptId)
+        .sortBy('order');
+
+      for (const s of currentManuScenes) {
+        await db.scenes.delete(s.id);
+        delete lastSnapshotMapRef.current[s.id];
       }
 
-      if (data.notes !== undefined && data.notes.trim()) {
-        updatedManu.notes = data.notes.trim();
+      const newCreatedScenes: Scene[] = [];
+      for (let i = 0; i < sceneSplits.length; i++) {
+        const split = sceneSplits[i];
+        const newScene: Scene = {
+          id: `scene-${Date.now()}-${i}`,
+          manuscriptId: targetManuscriptId,
+          title: split.title || `第 ${i + 1} 场`,
+          order: i + 1,
+          content: split.content,
+          summary: split.summary,
+          createdAt: Date.now() + i,
+          updatedAt: Date.now() + i,
+        };
+        await db.scenes.add(newScene);
+        newCreatedScenes.push(newScene);
+        lastSnapshotMapRef.current[newScene.id] = newScene.content;
       }
 
-      if (data.characters && data.characters.length > 0) {
-        const existingNames = new Set(targetManu.characters.map((c) => c.name.toLowerCase()));
-        const newChars = data.characters.filter((c) => !existingNames.has(c.name.toLowerCase()));
-        updatedManu.characters = [...targetManu.characters, ...newChars];
-      }
-
-      if (data.motifs && data.motifs.length > 0) {
-        const existingNames = new Set(targetManu.motifs.map((m) => m.name.toLowerCase()));
-        const newMotifs = data.motifs.filter((m) => !existingNames.has(m.name.toLowerCase()));
-        updatedManu.motifs = [...targetManu.motifs, ...newMotifs];
-      }
-
-      await updateManuscript(updatedManu);
-
-      // If scene splits are explicitly provided and selected
-      if (data.sceneSplits && data.sceneSplits.length > 1) {
-        await flushAutosave();
-
-        const currentManuScenes = await db.scenes
-          .where('manuscriptId')
-          .equals(targetManuscriptId)
-          .sortBy('order');
-
-        for (const s of currentManuScenes) {
-          await db.scenes.delete(s.id);
-          delete lastSnapshotMapRef.current[s.id];
-        }
-
-        const newCreatedScenes: Scene[] = [];
-        for (let i = 0; i < data.sceneSplits.length; i++) {
-          const split = data.sceneSplits[i];
-          const newScene: Scene = {
-            id: `scene-${Date.now()}-${i}`,
-            manuscriptId: targetManuscriptId,
-            title: split.title || `第 ${i + 1} 场`,
-            order: i + 1,
-            content: split.content,
-            summary: split.summary,
-            createdAt: Date.now() + i,
-            updatedAt: Date.now() + i,
-          };
-          await db.scenes.add(newScene);
-          newCreatedScenes.push(newScene);
-          lastSnapshotMapRef.current[newScene.id] = newScene.content;
-        }
-
-        setScenes(newCreatedScenes);
-        if (newCreatedScenes.length > 0) {
-          handleSelectScene(newCreatedScenes[0].id);
-        }
+      setScenes(newCreatedScenes);
+      if (newCreatedScenes.length > 0) {
+        handleSelectScene(newCreatedScenes[0].id);
       }
     },
-    [manuscripts, updateManuscript, flushAutosave, handleSelectScene]
+    [flushAutosave, handleSelectScene]
   );
 
   // Add new scene
@@ -531,6 +497,17 @@ export function useManuscript() {
     await db.scenes.update(sceneId, { title: newTitle.trim(), updatedAt: Date.now() });
   }, []);
 
+  // Update scene metadata (e.g. summary, pov, location, timeframe, title)
+  const updateSceneMetadata = useCallback(
+    async (sceneId: string, updates: Partial<Scene>) => {
+      setScenes((prev) =>
+        prev.map((s) => (s.id === sceneId ? { ...s, ...updates, updatedAt: Date.now() } : s))
+      );
+      await db.scenes.update(sceneId, { ...updates, updatedAt: Date.now() });
+    },
+    []
+  );
+
   // Update settings
   const updateSettings = useCallback(async (newSettings: AppSettings) => {
     setSettings(newSettings);
@@ -549,7 +526,7 @@ export function useManuscript() {
     createManuscript,
     importManuscriptFile,
     importSceneFile,
-    applyProfilingData,
+    applySceneSplits,
     scenes,
     activeScene,
     activeSceneId,
@@ -560,9 +537,11 @@ export function useManuscript() {
     addScene,
     deleteScene,
     renameScene,
+    updateSceneMetadata,
     updateManuscript,
     settings,
     updateSettings,
   };
 }
+
 

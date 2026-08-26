@@ -24,6 +24,7 @@ export class OllamaProvider implements LLMProvider {
       const modelCount = data.models?.length || 0;
       return { ok: true, message: `Ollama 本地服务正常，检测到 ${modelCount} 个本地模型。` };
     } catch (err: any) {
+      console.error('[Ollama testConnection error]:', err);
       return {
         ok: false,
         message: `Ollama 连接失败: 请确认本地已启动 ollama serve 且允许跨域访问。(${err?.message})`,

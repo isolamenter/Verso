@@ -5,7 +5,9 @@ import type {
   ColdReaderReport,
   IntentEvaluation,
   VersionCompareReport,
-  ManuscriptProfileResult,
+  ProfilingModule,
+  ProfilingRunParams,
+  ProfilingModuleResultMap,
   LiteraryLens,
   PromptTemplate,
   ContextSelectionConfig,
@@ -15,7 +17,9 @@ import type {
   TaskBindingType,
   ModelProfile,
   LLMProvider,
-  ContextPolicy
+  ContextPolicy,
+  SceneDraftParams,
+  SceneDraftResult
 } from '../types';
 import { db } from '../db';
 import { BUILTIN_LENSES, BUILTIN_PROMPT_TEMPLATES } from '../db/initialData';
@@ -32,13 +36,26 @@ import { buildCritiquePrompt } from '../prompts/critique';
 import { buildColdReaderPrompt } from '../prompts/coldReader';
 import { buildIntentComparePrompt } from '../prompts/intentCompare';
 import { buildVersionComparePrompt } from '../prompts/versionCompare';
-import { buildManuscriptProfilePrompt } from '../prompts/profiler';
+import { buildSceneDraftPrompt } from '../prompts/draft';
+import {
+  buildSynopsisPrompt,
+  buildThemePrompt,
+  buildCharactersPrompt,
+  buildMotifsPrompt,
+  buildSceneSplitsPrompt,
+} from '../prompts/profiler';
+import type { ProfilingPromptContext } from '../prompts/profiler';
 import {
   parseCritiqueResponse,
   parseColdReaderResponse,
   parseIntentResponse,
   parseVersionCompareResponse,
-  parseManuscriptProfileResponse
+  parseSynopsisResponse,
+  parseThemeResponse,
+  parseCharactersResponse,
+  parseMotifsResponse,
+  parseSceneSplitsResponse,
+  parseSceneDraftResponse,
 } from '../prompts/parser';
 
 export interface TaskExecutionPlan {
@@ -49,6 +66,40 @@ export interface TaskExecutionPlan {
   maxTokens?: number;
   contextPolicy?: ContextPolicy;
 }
+
+// 建档五模块：prompt builder 与 parser 查表
+const PROFILING_MODULE_CONFIG: Record<
+  ProfilingModule,
+  {
+    buildPrompt: (ctx: ProfilingPromptContext) => string;
+    parse: (
+      raw: string,
+      fallbackTitle: string,
+      sourceText?: string
+    ) => ProfilingModuleResultMap[ProfilingModule];
+  }
+> = {
+  synopsis: {
+    buildPrompt: buildSynopsisPrompt,
+    parse: (raw, title) => ({ text: parseSynopsisResponse(raw, title) }),
+  },
+  theme: {
+    buildPrompt: buildThemePrompt,
+    parse: (raw) => ({ text: parseThemeResponse(raw) }),
+  },
+  characters: {
+    buildPrompt: buildCharactersPrompt,
+    parse: (raw) => ({ items: parseCharactersResponse(raw) }),
+  },
+  motifs: {
+    buildPrompt: buildMotifsPrompt,
+    parse: (raw) => ({ items: parseMotifsResponse(raw) }),
+  },
+  scene_splits: {
+    buildPrompt: buildSceneSplitsPrompt,
+    parse: (raw, _title, sourceText) => ({ splits: parseSceneSplitsResponse(raw, sourceText) }),
+  },
+};
 
 async function checkProfileUsability(
   profile: ModelProfile
@@ -114,8 +165,20 @@ export function useCritique(
   const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
   const [isAskLoading, setIsAskLoading] = useState(false);
 
-  // Profiling State
-  const [isProfilingLoading, setIsProfilingLoading] = useState(false);
+  // Scene Drafting State (场景起草与生成)
+  const [draftResult, setDraftResult] = useState<SceneDraftResult | null>(null);
+  const [draftStreamingText, setDraftStreamingText] = useState<string>('');
+  const [isDraftLoading, setIsDraftLoading] = useState(false);
+
+  // Profiling State（建档五模块，每模块独立 loading + abort）
+  const [profilingLoading, setProfilingLoading] = useState<Record<ProfilingModule, boolean>>({
+    synopsis: false,
+    theme: false,
+    characters: false,
+    motifs: false,
+    scene_splits: false,
+  });
+  const profilingAbortRefs = useRef<Partial<Record<ProfilingModule, AbortController>>>({});
 
   // Abort Controllers for race condition & cancellation protection
   const critiqueAbortRef = useRef<AbortController | null>(null);
@@ -123,7 +186,7 @@ export function useCritique(
   const intentAbortRef = useRef<AbortController | null>(null);
   const compareAbortRef = useRef<AbortController | null>(null);
   const askAbortRef = useRef<AbortController | null>(null);
-  const profilerAbortRef = useRef<AbortController | null>(null);
+  const draftAbortRef = useRef<AbortController | null>(null);
 
   // Load Lenses & Templates from DB
   useEffect(() => {
@@ -298,6 +361,10 @@ export function useCritique(
           customInstruction
         );
 
+        console.log(
+          `📖 [Verso 审读] 启动审读任务 | 类别: ${category} | 视角: ${activeLens?.name || '默认'} | 选中文本: ${selectedText.length} 字`
+        );
+
         const res = await plan.provider.chat({
           messages: [
             { role: 'system', content: plan.systemPrompt },
@@ -326,6 +393,7 @@ export function useCritique(
         }
       } catch (err: any) {
         if (err?.name === 'AbortError') return;
+        console.error('[Verso AI: 审读调用失败]', err);
         setCritiqueSummary(`审读调用失败: ${err?.message || '未知错误'}`);
       } finally {
         setIsCritiqueLoading(false);
@@ -362,6 +430,8 @@ export function useCritique(
         plan.profile.systemPrompt ||
         '你是一名敏锐、冷峻、没有任何先入为主假定的文学冷读者。请完全基于文本实际呈现的信息进行事实感知与结构解码。你不知道作者的任何设定与意图。';
 
+      console.log(`❄️ [Verso 冷读] 启动冷读者孤立感知分析 | 场景: ${currentScene.title}`);
+
       const res = await plan.provider.chat({
         messages: [
           {
@@ -380,6 +450,7 @@ export function useCritique(
       setColdReaderReport(parsed);
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
+      console.error('[Verso AI: 冷读分析失败]', err);
       alert(`冷读分析失败: ${err?.message || '未知错误'}`);
     } finally {
       setIsColdReaderLoading(false);
@@ -398,6 +469,8 @@ export function useCritique(
         const plan = await getExecutionPlanForTask('general');
         const prompt = buildIntentComparePrompt(authorIntent, extractPlainText(currentScene.content));
 
+        console.log(`🎯 [Verso 意图] 启动作者意图达成度评估 | 意图: "${authorIntent.slice(0, 40)}..."`);
+
         const res = await plan.provider.chat({
           messages: [
             { role: 'system', content: plan.systemPrompt },
@@ -413,6 +486,7 @@ export function useCritique(
         setIntentEvaluation(parsed);
       } catch (err: any) {
         if (err?.name === 'AbortError') return;
+        console.error('[Verso AI: 意图比对失败]', err);
         alert(`意图比对失败: ${err?.message || '未知错误'}`);
       } finally {
         setIsIntentLoading(false);
@@ -432,6 +506,8 @@ export function useCritique(
         const plan = await getExecutionPlanForTask('general');
         const prompt = buildVersionComparePrompt(nameA, textA, nameB, textB);
 
+        console.log(`⚖️ [Verso 比对] 启动双版本差异审校 | [${nameA}] vs [${nameB}]`);
+
         const res = await plan.provider.chat({
           messages: [
             { role: 'system', content: plan.systemPrompt },
@@ -447,6 +523,7 @@ export function useCritique(
         setCompareReport(parsed);
       } catch (err: any) {
         if (err?.name === 'AbortError') return;
+        console.error('[Verso AI: 版本对比失败]', err);
         alert(`版本对比失败: ${err?.message || '未知错误'}`);
       } finally {
         setIsCompareLoading(false);
@@ -485,6 +562,8 @@ export function useCritique(
           userPromptWithContext = `${builtContext.formattedPromptString}\n\n【创作者发问】\n${question}`;
         }
 
+        console.log(`💬 [Verso 问答] 发起文学发问: "${question.slice(0, 50)}..."`);
+
         const messages = [
           { role: 'system' as const, content: plan.systemPrompt },
           ...chatHistory,
@@ -501,6 +580,7 @@ export function useCritique(
         setChatHistory([...newHistory, { role: 'assistant', content: res.text }]);
       } catch (err: any) {
         if (err?.name === 'AbortError') return;
+        console.error('[Verso AI: 问答调用失败]', err);
         setChatHistory([
           ...newHistory,
           { role: 'assistant', content: `对话失败: ${err?.message || '模型未返回有效响应'}` },
@@ -528,23 +608,45 @@ export function useCritique(
     []
   );
 
-  // Run AI Literary Profiling on manuscript/scene import or explicit request
-  const runManuscriptProfile = useCallback(
-    async (
-      title: string,
-      content: string,
-      options?: { userNotes?: string; shouldSuggestScenes?: boolean }
-    ): Promise<ManuscriptProfileResult> => {
-      if (profilerAbortRef.current) {
-        profilerAbortRef.current.abort();
+  // Full text of the manuscript across all scenes in sequential order for whole-book profiling
+  const fullManuscriptContent = useMemo(() => {
+    if (!scenes || scenes.length === 0) return '';
+    return scenes
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s) => s.content)
+      .filter(Boolean)
+      .join('\n\n');
+  }, [scenes]);
+
+  // Run a single profiling module (generate from manuscript / refine current value)
+  const runProfilingModule = useCallback(
+    async <M extends ProfilingModule>(
+      module: M,
+      params: ProfilingRunParams
+    ): Promise<ProfilingModuleResultMap[M]> => {
+      if (!manuscript) throw new Error('当前没有打开的书稿，无法执行 AI 建档。');
+      if (params.mode === 'refine' && !params.currentValue) {
+        throw new Error('当前没有可精修的内容。');
       }
+
+      profilingAbortRefs.current[module]?.abort();
       const abortController = new AbortController();
-      profilerAbortRef.current = abortController;
-      setIsProfilingLoading(true);
+      profilingAbortRefs.current[module] = abortController;
+      setProfilingLoading((prev) => ({ ...prev, [module]: true }));
 
       try {
         const plan = await getExecutionPlanForTask('general');
-        const userPrompt = buildManuscriptProfilePrompt(title, content, options);
+        const cfg = PROFILING_MODULE_CONFIG[module];
+        const userPrompt = cfg.buildPrompt({
+          title: manuscript.title,
+          content: fullManuscriptContent,
+          mode: params.mode,
+          currentValue: params.currentValue,
+          userNotes: params.userNotes,
+        });
+
+        console.log(`📚 [Verso 建档] 启动全书建档分析 | 模块: ${module} | 模式: ${params.mode}`);
 
         const res = await plan.provider.chat({
           messages: [
@@ -557,13 +659,115 @@ export function useCritique(
           signal: abortController.signal,
         });
 
-        return parseManuscriptProfileResponse(res.text, title);
+        return cfg.parse(res.text, manuscript.title, fullManuscriptContent) as ProfilingModuleResultMap[M];
       } finally {
-        setIsProfilingLoading(false);
+        setProfilingLoading((prev) => ({ ...prev, [module]: false }));
       }
     },
-    [getExecutionPlanForTask]
+    [getExecutionPlanForTask, manuscript, fullManuscriptContent]
   );
+
+  // Execute Scene Drafting / Story Generation with Streaming Support
+  const runSceneDraft = useCallback(
+    async (
+      draftParams: SceneDraftParams,
+      onStreamChunk?: (chunk: string, accumulated: string) => void
+    ): Promise<SceneDraftResult> => {
+      if (draftAbortRef.current) draftAbortRef.current.abort();
+      draftAbortRef.current = new AbortController();
+
+      setIsDraftLoading(true);
+      setDraftStreamingText('');
+
+      try {
+        const plan = await getExecutionPlanForTask('scene_draft');
+        const activeLens = lenses.find((l) => l.id === activeLensId);
+
+        const prompt = buildSceneDraftPrompt({
+          params: {
+            ...draftParams,
+            lensInstruction: draftParams.lensInstruction || activeLens?.promptInstruction,
+          },
+          manuscript,
+          scenes,
+          currentScene,
+        });
+
+        console.log(
+          `✍️ [Verso 起草] 启动场景创作 | 场景: 《${draftParams.sceneTitle}》 | 模式: ${draftParams.mode} | 篇幅: ${draftParams.targetLength}`
+        );
+
+        let accumulated = '';
+        const systemPrompt =
+          plan.profile.systemPrompt ||
+          '你是一位极具语言质感、叙事沉浸感与审美克制力的纯文学/严肃小说作家与特约主笔。请严格按照纯文学标准创作高质量的小说场景。';
+
+        try {
+          accumulated = await plan.provider.chatStream(
+            {
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: prompt },
+              ],
+              temperature: plan.temperature ?? 0.7,
+              maxTokens: plan.maxTokens ?? 8192,
+              responseFormat: 'json_object',
+              signal: draftAbortRef.current.signal,
+            },
+            (chunkText, fullAccumulated) => {
+              accumulated = fullAccumulated;
+              setDraftStreamingText(fullAccumulated);
+              if (onStreamChunk) {
+                onStreamChunk(chunkText, fullAccumulated);
+              }
+            }
+          );
+        } catch (streamErr: any) {
+          if (streamErr?.name === 'AbortError') throw streamErr;
+          console.warn('[Verso AI: 流式输出降级为普通请求]', streamErr);
+          const chatRes = await plan.provider.chat({
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: prompt },
+            ],
+            temperature: plan.temperature ?? 0.7,
+            maxTokens: plan.maxTokens ?? 8192,
+            responseFormat: 'json_object',
+            signal: draftAbortRef.current.signal,
+          });
+          accumulated = chatRes.text;
+          setDraftStreamingText(accumulated);
+        }
+
+        const parsed = parseSceneDraftResponse(accumulated);
+        setDraftResult(parsed);
+        return parsed;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          console.log('[Verso AI: 场景起草已被创作者取消]');
+          throw err;
+        }
+        console.error('[Verso AI: 场景起草失败]', err);
+        throw err;
+      } finally {
+        setIsDraftLoading(false);
+      }
+    },
+    [getExecutionPlanForTask, lenses, activeLensId, manuscript, scenes, currentScene]
+  );
+
+  const abortSceneDraft = useCallback(() => {
+    if (draftAbortRef.current) {
+      draftAbortRef.current.abort();
+      draftAbortRef.current = null;
+    }
+    setIsDraftLoading(false);
+  }, []);
+
+  const clearDraftResult = useCallback(() => {
+    setDraftResult(null);
+    setDraftStreamingText('');
+  }, []);
 
   return {
     lenses,
@@ -593,7 +797,14 @@ export function useCritique(
     chatHistory,
     isAskLoading,
     askQuestion,
-    isProfilingLoading,
-    runManuscriptProfile,
+    profilingLoading,
+    runProfilingModule,
+    fullManuscriptContent,
+    draftResult,
+    draftStreamingText,
+    isDraftLoading,
+    runSceneDraft,
+    abortSceneDraft,
+    clearDraftResult,
   };
 }

@@ -1,98 +1,166 @@
 import { describe, it, expect } from 'vitest';
-import { buildManuscriptProfilePrompt } from '../profiler';
-import { parseManuscriptProfileResponse } from '../parser';
+import {
+  buildSynopsisPrompt,
+  buildThemePrompt,
+  buildCharactersPrompt,
+  buildMotifsPrompt,
+  buildSceneSplitsPrompt,
+} from '../profiler';
+import type { CharacterItem, MotifItem, Scene } from '../../types';
 
-describe('Manuscript Profiler & Onboarding', () => {
-  it('should build profiling prompt with scene split instructions for long text or chapter markers', () => {
-    const promptWithChapters = buildManuscriptProfilePrompt(
-      '夜巡',
-      '第一章：起首\n钟表在黑暗中摆动。\n\n第二章：雨夜\n雨水打在铁皮屋顶上。'
-    );
-    expect(promptWithChapters).toContain('智能分场切分建议');
-    expect(promptWithChapters).toContain('sceneSplits');
+// ---- 建档五模块独立 builder ----
 
-    const promptShort = buildManuscriptProfilePrompt('诗歌短章', '一滴水落在玻璃上。', {
-      shouldSuggestScenes: false,
-    });
-    expect(promptShort).not.toContain('sceneSplits');
+const TITLE = '夜巡';
+const CONTENT = '第一章：起首\n钟表在黑暗中摆动。\n\n第二章：雨夜\n雨水打在铁皮屋顶上。';
+
+const char = (name: string, alias?: string): CharacterItem => ({
+  id: `char-${name}`,
+  name,
+  alias,
+  role: '主角',
+  notes: '声线沙哑克制。',
+});
+
+const motif = (name: string): MotifItem => ({
+  id: `motif-${name}`,
+  name,
+  description: '象征凝滞的时间。',
+  occurrencesCount: 3,
+});
+
+const scene = (title: string, content: string): Scene => ({
+  id: `scene-${title}`,
+  manuscriptId: 'm1',
+  title,
+  order: 1,
+  content,
+  createdAt: 0,
+  updatedAt: 0,
+});
+
+describe('建档五模块 builder（generate 模式）', () => {
+  it('synopsis: 含正文与 synopsis JSON 键，不含其他模块字段', () => {
+    const prompt = buildSynopsisPrompt({ title: TITLE, content: CONTENT, mode: 'generate' });
+    expect(prompt).toContain('文稿正文');
+    expect(prompt).toContain('钟表在黑暗中摆动');
+    expect(prompt).toContain('"synopsis"');
+    expect(prompt).not.toContain('themeAnalysis');
+    expect(prompt).not.toContain('characters');
+    expect(prompt).not.toContain('sceneSplits');
   });
 
-  it('should include author annotations and directives when userNotes is provided', () => {
-    const userNotes = '主角是陈默，修正人物身份为前侦探；重点提炼生锈钥匙与旧皮箱的意象；梗概突出反转。';
-    const prompt = buildManuscriptProfilePrompt('雨夜迷局', '正文内容……', {
-      userNotes,
-    });
-
-    expect(prompt).toContain('作者批注与核心修正要求');
-    expect(prompt).toContain(userNotes);
-    expect(prompt).toContain('严格遵从作者批注中关于人物身份、关系与性格的修正');
-    expect(prompt).toContain('优先覆盖作者批注中指定或强调的核心意象');
+  it('theme: 含深层矛盾要求与 themeAnalysis JSON 键', () => {
+    const prompt = buildThemePrompt({ title: TITLE, content: CONTENT, mode: 'generate' });
+    expect(prompt).toContain('深层隐秘矛盾');
+    expect(prompt).toContain('"themeAnalysis"');
   });
 
-  it('should not include author annotations section when userNotes is empty or whitespace', () => {
-    const promptEmpty = buildManuscriptProfilePrompt('雨夜迷局', '正文内容……', {
+  it('characters: 含四档 role 与 alias 说明', () => {
+    const prompt = buildCharactersPrompt({ title: TITLE, content: CONTENT, mode: 'generate' });
+    expect(prompt).toContain('"characters"');
+    expect(prompt).toContain('"主角"');
+    expect(prompt).toContain('别名');
+  });
+
+  it('motifs: 含 occurrencesCount 频次要求', () => {
+    const prompt = buildMotifsPrompt({ title: TITLE, content: CONTENT, mode: 'generate' });
+    expect(prompt).toContain('"motifs"');
+    expect(prompt).toContain('occurrencesCount');
+  });
+
+  it('scene_splits: 含全量切分与 startQuote 锚点要求', () => {
+    const prompt = buildSceneSplitsPrompt({ title: TITLE, content: CONTENT, mode: 'generate' });
+    expect(prompt).toContain('"sceneSplits"');
+    expect(prompt).toContain('全量切分');
+    expect(prompt).toContain('startQuote');
+    expect(prompt).toContain('严禁回吐大段正文内容');
+  });
+
+  it('userNotes 注入【作者批注与核心修正要求】段，空白批注不出现', () => {
+    const withNotes = buildSynopsisPrompt({
+      title: TITLE,
+      content: CONTENT,
+      mode: 'generate',
+      userNotes: '梗概突出反转。',
+    });
+    expect(withNotes).toContain('作者批注与核心修正要求');
+    expect(withNotes).toContain('梗概突出反转。');
+
+    const emptyNotes = buildSynopsisPrompt({
+      title: TITLE,
+      content: CONTENT,
+      mode: 'generate',
       userNotes: '   ',
     });
-    expect(promptEmpty).not.toContain('作者批注与核心修正要求');
+    expect(emptyNotes).not.toContain('作者批注与核心修正要求');
+  });
+});
+
+describe('建档五模块 builder（refine 模式）', () => {
+  it('synopsis refine 注入当前梗概修订基线', () => {
+    const prompt = buildSynopsisPrompt({
+      title: TITLE,
+      content: CONTENT,
+      mode: 'refine',
+      currentValue: '旧梗概：一个修表匠的故事。',
+    });
+    expect(prompt).toContain('当前梗概（修订基线）');
+    expect(prompt).toContain('旧梗概：一个修表匠的故事。');
+    expect(prompt).toContain('保留未受批注影响的部分');
   });
 
-  it('should parse complete structured profiling response JSON', () => {
-    const raw = JSON.stringify({
-      synopsis: '讲述一个修表匠在城市拆迁前夕与盲女相遇的故事。',
-      themeAnalysis: '深层矛盾在于物理时间的精确性与个体记忆的流逝感之间的冲突。',
-      characters: [
-        {
-          name: '陈老九',
-          alias: '九叔',
-          role: '主角',
-          notes: '声线沙哑克制，几乎不使用形容词，动作比话语先到。',
-        },
-        {
-          name: '阿清',
-          role: '主要配角',
-          notes: '盲女，对声音和气味有超常的记忆力。',
-        },
-      ],
-      motifs: [
-        {
-          name: '停止摆动的座钟',
-          description: '象征凝滞不前的停滞时间与未完成的过去。',
-          occurrencesCount: 4,
-        },
-      ],
-      sceneSplits: [
-        {
-          title: '第一场：钟声渐歇',
-          summary: '交代修表铺拆迁背景与九叔的日常。',
-          content: '第一章：起首\n钟表在黑暗中摆动。',
-        },
-        {
-          title: '第二场：盲女登门',
-          summary: '阿清第一次走进店铺询问修表。',
-          content: '第二章：雨夜\n雨水打在铁皮屋顶上。',
-        },
+  it('theme refine 注入当前主题剖析', () => {
+    const prompt = buildThemePrompt({
+      title: TITLE,
+      content: CONTENT,
+      mode: 'refine',
+      currentValue: '旧剖析：时间与记忆的冲突。',
+    });
+    expect(prompt).toContain('当前主题剖析（修订基线）');
+    expect(prompt).toContain('旧剖析：时间与记忆的冲突。');
+  });
+
+  it('characters refine 注入当前列表并要求合并重复条目', () => {
+    const prompt = buildCharactersPrompt({
+      title: TITLE,
+      content: CONTENT,
+      mode: 'refine',
+      currentValue: [char('陈老九', '九叔'), char('九叔')],
+    });
+    expect(prompt).toContain('当前人物列表（修订基线）');
+    expect(prompt).toContain('姓名：陈老九 | 别名：九叔');
+    expect(prompt).toContain('合并重复条目');
+  });
+
+  it('motifs refine 注入当前意象列表', () => {
+    const prompt = buildMotifsPrompt({
+      title: TITLE,
+      content: CONTENT,
+      mode: 'refine',
+      currentValue: [motif('停止摆动的座钟')],
+    });
+    expect(prompt).toContain('当前意象列表（修订基线）');
+    expect(prompt).toContain('停止摆动的座钟');
+  });
+
+  it('scene_splits refine 注入当前分场边界锚点', () => {
+    const prompt = buildSceneSplitsPrompt({
+      title: TITLE,
+      content: CONTENT,
+      mode: 'refine',
+      currentValue: [
+        scene('第一场：钟声渐歇', '第一章：起首\n钟表在黑暗中摆动。'),
+        scene('第二场：盲女登门', '第二章：雨夜\n雨水打在铁皮屋顶上。'),
       ],
     });
-
-    const parsed = parseManuscriptProfileResponse(raw, '夜巡');
-    expect(parsed.synopsis).toContain('修表匠');
-    expect(parsed.themeAnalysis).toContain('个体记忆');
-    expect(parsed.characters.length).toBe(2);
-    expect(parsed.characters[0].name).toBe('陈老九');
-    expect(parsed.characters[0].role).toBe('主角');
-    expect(parsed.motifs.length).toBe(1);
-    expect(parsed.motifs[0].name).toBe('停止摆动的座钟');
-    expect(parsed.motifs[0].occurrencesCount).toBe(4);
-    expect(parsed.sceneSplits?.length).toBe(2);
-    expect(parsed.sceneSplits?.[0].title).toBe('第一场：钟声渐歇');
+    expect(prompt).toContain('当前分场结构（参考切分粒度与边界）');
+    expect(prompt).toContain('《第一场：钟声渐歇》');
+    expect(prompt).toContain('钟表在黑暗中摆动');
+    expect(prompt).toContain('可参考现有分场边界');
   });
 
-  it('should fallback gracefully when profiling output is unstructured or broken JSON', () => {
-    const raw = '这是一篇关于记忆与衰老的小说，主要人物是九叔。';
-    const parsed = parseManuscriptProfileResponse(raw, '夜巡');
-
-    expect(parsed.synopsis).toContain('这是一篇关于记忆与衰老的小说');
-    expect(parsed.characters).toEqual([]);
-    expect(parsed.motifs).toEqual([]);
+  it('refine 模式空当前值时退化为纯生成（无基线段）', () => {
+    const prompt = buildSynopsisPrompt({ title: TITLE, content: CONTENT, mode: 'refine', currentValue: '' });
+    expect(prompt).not.toContain('修订基线');
   });
 });

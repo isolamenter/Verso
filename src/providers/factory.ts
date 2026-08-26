@@ -3,6 +3,7 @@ import { OpenAICompatibleProvider } from './openai';
 import { AnthropicProvider } from './anthropic';
 import { GeminiProvider } from './gemini';
 import { OllamaProvider } from './ollama';
+import { LoggingLLMProvider } from './loggingWrapper';
 
 export function createLLMProvider(
   profile: ModelProfile,
@@ -13,19 +14,26 @@ export function createLLMProvider(
     apiKey: resolvedApiKey || profile.apiKey,
   };
 
+  let rawProvider: LLMProvider;
   switch (profile.providerType) {
     case 'anthropic':
-      return new AnthropicProvider(effectiveProfile);
+      rawProvider = new AnthropicProvider(effectiveProfile);
+      break;
     case 'gemini':
-      return new GeminiProvider(effectiveProfile);
+      rawProvider = new GeminiProvider(effectiveProfile);
+      break;
     case 'ollama':
-      return new OllamaProvider(effectiveProfile);
+      rawProvider = new OllamaProvider(effectiveProfile);
+      break;
     case 'openai':
     case 'deepseek':
     case 'openrouter':
     case 'custom':
     default:
-      return new OpenAICompatibleProvider(effectiveProfile);
+      rawProvider = new OpenAICompatibleProvider(effectiveProfile);
+      break;
   }
+
+  return new LoggingLLMProvider(rawProvider, effectiveProfile);
 }
 

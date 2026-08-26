@@ -23,6 +23,7 @@ export class GeminiProvider implements LLMProvider {
       });
       return { ok: true, message: `Gemini API 连接成功 (${this.getModelName()})` };
     } catch (err: any) {
+      console.error('[Gemini testConnection error]:', err);
       return { ok: false, message: err?.message || 'Gemini 连接失败' };
     }
   }

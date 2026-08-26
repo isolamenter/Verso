@@ -35,6 +35,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
         message: `连接成功 (模型: ${this.profile.model}, 回复: ${res.text.slice(0, 15)})`,
       };
     } catch (err: any) {
+      console.error(`[${this.name} testConnection error]:`, err);
       return { ok: false, message: err?.message || '连接失败，请检查 API Key 或 Base URL' };
     }
   }

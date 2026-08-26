@@ -9,8 +9,12 @@ import type {
   ContextSelectionConfig,
   Manuscript,
   Scene,
-  RevisionSnapshot
+  RevisionSnapshot,
+  StudioTab,
+  SceneDraftParams,
+  SceneDraftResult
 } from '../../types';
+import { DraftView } from '../studio/DraftView';
 import { CritiqueView } from '../studio/CritiqueView';
 import { ColdReaderView } from '../studio/ColdReaderView';
 import { IntentView } from '../studio/IntentView';
@@ -19,6 +23,7 @@ import { AskView } from '../studio/AskView';
 import { LensSelector } from '../studio/LensSelector';
 import { ContextInspector } from '../studio/ContextInspector';
 import {
+  PenTool,
   FileText,
   BookOpen,
   Target,
@@ -30,8 +35,17 @@ import {
 interface StudioProps {
   isOpen: boolean;
   onClose: () => void;
-  activeTab: 'critique' | 'cold_reader' | 'intent' | 'compare' | 'ask';
-  onTabChange: (tab: 'critique' | 'cold_reader' | 'intent' | 'compare' | 'ask') => void;
+  activeTab: StudioTab;
+  onTabChange: (tab: StudioTab) => void;
+  // Draft data
+  draftResult: SceneDraftResult | null;
+  draftStreamingText: string;
+  isDraftLoading: boolean;
+  onGenerateDraft: (params: SceneDraftParams) => Promise<SceneDraftResult>;
+  onAbortDraft: () => void;
+  onApplyDraftToScene: (content: string, mode: 'replace' | 'append') => void;
+  onSaveDraftAsRevision: (content: string, description: string) => void;
+  onUpdateSceneSummary?: (sceneId: string, summary: string) => void;
   // Critique data
   critiqueSummary?: string;
   annotations: LiteraryAnnotation[];
@@ -84,6 +98,14 @@ export const Studio: React.FC<StudioProps> = ({
   onClose,
   activeTab,
   onTabChange,
+  draftResult,
+  draftStreamingText,
+  isDraftLoading,
+  onGenerateDraft,
+  onAbortDraft,
+  onApplyDraftToScene,
+  onSaveDraftAsRevision,
+  onUpdateSceneSummary,
   critiqueSummary,
   annotations,
   onAcceptAnnotation,
@@ -119,10 +141,11 @@ export const Studio: React.FC<StudioProps> = ({
   if (!isOpen) return null;
 
   const tabs: {
-    id: 'critique' | 'cold_reader' | 'intent' | 'compare' | 'ask';
+    id: StudioTab;
     label: string;
     icon: React.ComponentType<any>;
   }[] = [
+    { id: 'draft', label: '场景起草', icon: PenTool },
     { id: 'critique', label: '审读批注', icon: FileText },
     { id: 'cold_reader', label: '冷读盲审', icon: BookOpen },
     { id: 'intent', label: '意图比对', icon: Target },
@@ -149,12 +172,12 @@ export const Studio: React.FC<StudioProps> = ({
       </div>
 
       {/* Tabs — underline index, cinnabar marks the active editorial tab */}
-      <div className="grid grid-cols-5 border-b border-line bg-paper">
+      <div className="grid grid-cols-6 border-b border-line bg-paper">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => onTabChange(id)}
-            className={`relative flex items-center justify-center space-x-1 py-2.5 px-0.5 text-xs transition-colors font-serif border-b-2 whitespace-nowrap ${
+            className={`relative flex items-center justify-center space-x-1 py-2.5 px-0.5 text-[11px] transition-colors font-serif border-b-2 whitespace-nowrap ${
               activeTab === id
                 ? 'border-cinnabar text-ink font-medium'
                 : 'border-transparent text-ink-muted hover:text-ink'
@@ -162,7 +185,7 @@ export const Studio: React.FC<StudioProps> = ({
             title={label}
           >
             <Icon className="w-3.5 h-3.5 shrink-0" />
-            <span>{label}</span>
+            <span className="hidden sm:inline">{label}</span>
           </button>
         ))}
       </div>
@@ -181,6 +204,23 @@ export const Studio: React.FC<StudioProps> = ({
 
       {/* Main Tab Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {activeTab === 'draft' && (
+          <DraftView
+            currentScene={currentScene}
+            manuscript={manuscript}
+            scenes={scenes}
+            selectedText={selectedText}
+            draftResult={draftResult}
+            draftStreamingText={draftStreamingText}
+            isLoading={isDraftLoading}
+            onGenerateDraft={onGenerateDraft}
+            onAbortDraft={onAbortDraft}
+            onApplyDraftToScene={onApplyDraftToScene}
+            onSaveDraftAsRevision={onSaveDraftAsRevision}
+            onUpdateSceneSummary={onUpdateSceneSummary}
+          />
+        )}
+
         {activeTab === 'critique' && (
           <CritiqueView
             summary={critiqueSummary}

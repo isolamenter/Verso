@@ -28,7 +28,7 @@ Unlike commercial AI ghostwriters or boilerplate web-novel generators, Verso adh
 2. **Critique Before Generation**: Verso eliminates patronizing praise (*“vivid imagery”, “captivating story”*). It provides objective literary diagnostics first, followed by tiered, surgical proposals.
 3. **Subtractive Editing**: Great writing is often the art of subtraction. AI identifies authorial over-explanation, exposed thematic concepts, emotion naming, redundant modifiers, and clichés.
 4. **Trade-off Analysis**: Every edit has a cost. Rather than claiming a revision is strictly "better", AI breaks down what is gained (e.g., heightened restraint, poetic ambiguity) versus what is sacrificed (e.g., increased reader cognitive load, softened dramatic immediacy).
-5. **Zero Server Privacy Guarantee (Local-First)**: Manuscripts reside purely in your browser's IndexedDB sandbox. Your API keys are encrypted via WebCrypto AES-GCM or held in volatile session memory—never touching any third-party server.
+5. **Zero Server Privacy Guarantee (Local-First)**: Manuscripts reside purely in your browser's IndexedDB sandbox. API keys are kept only in the browser (localStorage / sessionStorage / in-memory) and travel browser-to-provider—never passing through any first-party server.
 
 ---
 
@@ -70,7 +70,8 @@ Unlike commercial AI ghostwriters or boilerplate web-novel generators, Verso adh
 
 ### 5. Interactive Creative Inquiry (Ask & Discuss)
 * Direct literary consultation inside the studio panel (*“Why does this scene feel ungrounded?”*, *“Which line is most dispensable?”*).
-* **Context Inspector**: Full visibility and granular toggles over what is sent to the LLM (Selected text, Current scene, Preceding scene, Character notes).
+* **Context Inspector**: Full visibility and granular toggles over what is sent to the LLM (Selected text, Current scene, Preceding scene, Character notes, Motifs, Entire manuscript).
+* **Per-Profile Context Policies**: Each model profile can also enforce a fixed context policy—`Selection Only`, `Current Scene Only`, `Scene & Notes`, `Scene & Preceding`, or `Full Manuscript`—keeping long-context scans deterministic.
 
 ### 6. Custom Literary Lenses & Prompt Library
 * Built-in classic lenses:
@@ -89,25 +90,31 @@ Unlike commercial AI ghostwriters or boilerplate web-novel generators, Verso adh
 
 ### 8. Atomic Revisions & Zero-Loss Snapshots
 * **Pre-Restore Safety Snapshot**: Automatically creates a backup snapshot before rolling back to any historical version, ensuring spontaneous ideas are never lost.
-* **Session Checkpoint Snapshots**: Records automatic revision checkpoints during pauses in writing (30s) when cumulative edits exceed 20 characters.
+* **Session Checkpoint Snapshots**: Records automatic revision checkpoints during pauses in writing (30s) whenever the text has changed since the last checkpoint.
 * **Continuous Autosave with Pre-Switch Flush**: Debounced 1.5s autosave backed by immediate synchronous/asynchronous flushing (`flushAutosave`) before scene switching, manuscript switching, window blur/hide, or tab closing—guaranteeing zero data loss.
 * **Snapshot Management**: Milestone tagging, version comparison, and single-click restoration.
+
+### 9. Multi-Format Import & AI Literary Profiling
+* **Fully Local Parsing**: Native support for `.txt`, `.md`, and `.docx` (Word documents are semantically cleaned client-side via `mammoth.js`, stripping layout noise and inline styles—100% in-browser, never uploaded).
+* **AI Manuscript Onboarding** — five independent modules inside the literary memo, each runnable on its own via **AI Generate** (full-manuscript extraction) or **AI Refine** (revise the current value with your annotations) instead of re-running everything:
+  * **Synopsis**: Distills the story's stage, spine of action, and interpersonal undercurrents, with one-click undo of AI edits.
+  * **Deep Theme Analysis**: Stored separately from your handwritten notes, surfaces the hidden literary conflict (subtext) without polluting your memo.
+  * **Character Bios & Voice Profiling**: Extracts named characters, temperament textures, dialogue voice, and subtext habits; generated items merge by name (case-insensitive, alias-aware dedupe), refine merges duplicates and replaces the list.
+  * **Motif Network Mining**: Surfaces recurring symbols, sensory details, and intertextual frequencies, with the same dedupe-aware merge/replace semantics.
+  * **Smart Scene Split**: Long-form manuscripts are split into scenes by temporal/spatial shifts and chapter markers, verbatim to the source; coverage check and expandable full-text preview before applying, confirmation required to replace existing scenes, and multi-round refine to iterate on boundaries.
+  * **User Annotations & Regeneration**: Every module accepts creator annotations (character-relation corrections, motif preferences, synopsis emphasis, scene-split instructions) with quick-insert tags for generate or refine.
 
 ---
 
 ## 🔒 Security & BYOK Architecture
 
-Verso implements a zero-trust, local-first security architecture:
+Verso is a pure client-side application with no server of its own. Manuscripts and keys never touch any Verso infrastructure:
 
-| Storage Mode | Security Mechanism | Recommended Use Case |
-| :--- | :--- | :--- |
-| **Session Only** | Keys are held in RAM / SessionStorage (retained across refreshes in the same tab, destroyed upon closing tab/browser or manual clearing). | **Default recommended**, shared workstations or highest security |
-| **Encrypted Local** | Encrypted in the browser sandbox using native WebCrypto API (AES-GCM 256-bit with PBKDF2 100k iterations and independent random Salt & IV). | Private devices, eliminates re-entering keys |
-| **Local-Only (Offline)** | Cloud traffic is physically blocked; requests route strictly to loopback endpoints (`127.0.0.1` / Ollama). | Confidential drafts & air-gapped environments |
-
-* **Locked Profile Protection**: When an encrypted local profile is locked after reload, the studio explicitly alerts the user to enter their passphrase before invoking AI critique.
-* **Multi-Provider Hub**: Native support for OpenAI, Anthropic (Claude 3.7 Sonnet), Google Gemini (2.5 Flash / 2.0), DeepSeek, OpenRouter, Ollama, and custom OpenAI-compatible endpoints.
-* **Task-Based Profile Routing**: Bind specific tasks (Cold Reader, Line Edit, Quick Critique, Ask) to specialized model profiles.
+* **Browser-Sandboxed Keys**: API keys are cached in memory at runtime and persisted in the browser's `localStorage` (with a `sessionStorage` fallback on read)—never uploaded anywhere, and removable anytime via one-click clearing in Settings.
+* **Direct Provider Calls**: AI requests travel browser-to-provider only. Verso operates no relay, proxy, or telemetry server.
+* **Local-Only via Ollama**: Profiles can point at loopback endpoints (`http://localhost:11434`—Ollama, Qwen 2.5, local DeepSeek, …)—prompts and text never leave the machine, and no key is required.
+* **Multi-Provider Hub**: Native support for OpenAI (GPT-4o), Anthropic (Claude 3.7 Sonnet), Google Gemini (2.0 Flash / 2.5), DeepSeek (V3 / R1), OpenRouter, Ollama, and custom OpenAI-compatible endpoints. Max output tokens (default 8192) and request timeout (default 300s) are configurable per profile.
+* **Task-Based Profile Routing**: Bind specific tasks (Cold Reader, Line Edit, Quick Critique, Ask, Local Privacy) to specialized model profiles.
 * **Sanitized Exports**: Project and manuscript export routines automatically strip all stored API keys.
 
 ---
@@ -145,17 +152,17 @@ Verso implements a zero-trust, local-first security architecture:
 │   OpenAI • Claude • Gemini • Ollama • DeepSeek • OpenRouter │
 ├─────────────────────────────────────────────────────────────┤
 │                     Local Storage Layer                     │
-│    IndexedDB (Dexie.js)   •   WebCrypto (AES-GCM 256)       │
+│   IndexedDB (Dexie.js)  •  localStorage / sessionStorage    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 * **Core Framework**: React 19 + TypeScript 6
-* **Rich Text Engine**: Tiptap Editor (StarterKit, Highlight, Typography, CharacterCount)
+* **Rich Text Engine**: Tiptap Editor (StarterKit, Highlight, Typography, CharacterCount, Placeholder)
 * **Styling**: Tailwind CSS v4 + Lucide Icons
 * **Local Storage**: Dexie.js (IndexedDB browser sandbox with Autosave Flush)
 * **Diff & Splicing Engine**: diff-match-patch + 1-to-1 JSON Tree Range Splicer
-* **Cryptography**: Native WebCrypto API (AES-GCM 256 + PBKDF2 100k)
-* **Build & Test**: Vite 8 + Vitest (43 tests) + Oxlint
+* **API Key Storage**: In-memory cache + localStorage / sessionStorage (browser sandbox)
+* **Build & Test**: Vite 8 + Vitest (63 tests across 13 suites) + Oxlint
 
 ---
 

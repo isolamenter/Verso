@@ -5,6 +5,11 @@ import {
   parseColdReaderResponse,
   parseIntentResponse,
   parseVersionCompareResponse,
+  parseSynopsisResponse,
+  parseThemeResponse,
+  parseCharactersResponse,
+  parseMotifsResponse,
+  parseSceneSplitsResponse,
 } from '../parser';
 
 describe('Prompt Parsers & JSON Sanitization', () => {
@@ -104,5 +109,118 @@ describe('Prompt Parsers & JSON Sanitization', () => {
     const parsed = parseVersionCompareResponse(raw, '版本 A', '版本 B', '文本A', '文本B');
     expect(parsed.versionAGains).toBe('保留了抒情余味');
     expect(parsed.literaryTradeoffSummary).toContain('版本 B 牺牲了廉价速度');
+  });
+});
+
+describe('建档五模块独立 parser', () => {
+  it('parseSynopsisResponse 解析合法 JSON', () => {
+    const raw = JSON.stringify({ synopsis: '一个修表匠与盲女的故事。' });
+    expect(parseSynopsisResponse(raw, '夜巡')).toBe('一个修表匠与盲女的故事。');
+  });
+
+  it('parseSynopsisResponse 缺 synopsis 键时兜底中文文案', () => {
+    const raw = JSON.stringify({ other: true });
+    expect(parseSynopsisResponse(raw, '夜巡')).toContain('待提炼故事梗概');
+  });
+
+  it('parseSynopsisResponse JSON 失败回退 raw 文本', () => {
+    const raw = '这是一篇关于记忆与衰老的小说。';
+    expect(parseSynopsisResponse(raw, '夜巡')).toBe(raw);
+  });
+
+  it('parseThemeResponse 解析合法 JSON 与失败回退', () => {
+    const raw = JSON.stringify({ themeAnalysis: '时间精确与记忆流逝的冲突。' });
+    expect(parseThemeResponse(raw)).toBe('时间精确与记忆流逝的冲突。');
+    expect(parseThemeResponse('直接返回的自由文本')).toBe('直接返回的自由文本');
+    expect(parseThemeResponse(JSON.stringify({}))).toBe('');
+  });
+
+  it('parseCharactersResponse 完整解析并批内去重', () => {
+    const raw = JSON.stringify({
+      characters: [
+        { name: '陈老九', alias: '九叔', role: '主角', notes: '沙哑克制。' },
+        { name: '陈老九', alias: '九叔', role: '主角', notes: '重复条目。' },
+        { name: '九叔', role: '次要人物', notes: '与陈老九重复。' },
+        { name: '阿清', role: '主要配角', notes: '盲女。' },
+      ],
+    });
+    const parsed = parseCharactersResponse(raw);
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0].name).toBe('陈老九');
+    expect(parsed[0].alias).toBe('九叔');
+    expect(parsed[1].name).toBe('阿清');
+  });
+
+  it('parseCharactersResponse 垃圾输入返回空数组', () => {
+    expect(parseCharactersResponse('不是 JSON')).toEqual([]);
+    expect(parseCharactersResponse(JSON.stringify({ characters: [{ name: '' }] }))).toEqual([]);
+  });
+
+  it('parseMotifsResponse 大小写不敏感去重', () => {
+    const raw = JSON.stringify({
+      motifs: [
+        { name: 'Rain', description: '雨水。', occurrencesCount: 3 },
+        { name: 'rain', description: '重复。', occurrencesCount: 2 },
+      ],
+    });
+    const parsed = parseMotifsResponse(raw);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].occurrencesCount).toBe(3);
+  });
+
+  it('parseSceneSplitsResponse 基于 startQuote 对 sourceText 进行本地高保真切片', () => {
+    const source = '第一章 起首\n钟表在黑暗中摆动。\n\n第二章 雨夜\n雨水打在铁皮屋顶上。\n\n第三章 尾声\n天空放晴了。';
+    const raw = JSON.stringify({
+      sceneSplits: [
+        { title: '第一场：起首', summary: '钟表与暗夜', startQuote: '第一章 起首' },
+        { title: '第二场：雨夜', summary: '屋顶雨水', startQuote: '第二章 雨夜' },
+        { title: '第三场：尾声', summary: '放晴', startQuote: '第三章 尾声' },
+      ],
+    });
+
+    const parsed = parseSceneSplitsResponse(raw, source);
+    expect(parsed).toHaveLength(3);
+    expect(parsed[0].title).toBe('第一场：起首');
+    expect(parsed[0].summary).toBe('钟表与暗夜');
+    expect(parsed[0].content).toBe('第一章 起首\n钟表在黑暗中摆动。\n\n');
+
+    expect(parsed[1].title).toBe('第二场：雨夜');
+    expect(parsed[1].content).toBe('第二章 雨夜\n雨水打在铁皮屋顶上。\n\n');
+
+    expect(parsed[2].title).toBe('第三场：尾声');
+    expect(parsed[2].content).toBe('第三章 尾声\n天空放晴了。');
+
+    // 验证拼接后严格无缝还原原文（100% 零丢字）
+    const reconstructed = parsed.map((s) => s.content).join('');
+    expect(reconstructed).toBe(source);
+  });
+
+  it('parseSceneSplitsResponse 无 sourceText 时保留 raw 信息', () => {
+    const raw = JSON.stringify({
+      sceneSplits: [
+        { title: '第一场：钟声渐歇', startQuote: '钟表在黑暗中摆动。' },
+        { title: '', startQuote: '' },
+        { startQuote: '雨水打在铁皮屋顶上。' },
+      ],
+    });
+    const parsed = parseSceneSplitsResponse(raw);
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0].title).toBe('第一场：钟声渐歇');
+    expect(parsed[1].title).toBe('第 2 场');
+  });
+
+  it('parseSceneSplitsResponse 单场景或未匹配到次级锚点时降级为包含全文的单场', () => {
+    const source = '全篇只有一句话。';
+    const raw = JSON.stringify({
+      sceneSplits: [{ title: '单篇', startQuote: '全篇' }],
+    });
+    const parsed = parseSceneSplitsResponse(raw, source);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].title).toBe('单篇');
+    expect(parsed[0].content).toBe(source);
+  });
+
+  it('parseSceneSplitsResponse 垃圾输入返回空数组', () => {
+    expect(parseSceneSplitsResponse('不是 JSON')).toEqual([]);
   });
 });

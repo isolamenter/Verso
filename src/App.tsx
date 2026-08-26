@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useManuscript } from './hooks/useManuscript';
 import { useCritique } from './hooks/useCritique';
 import { useRevision } from './hooks/useRevision';
@@ -11,9 +11,8 @@ import { LensEditorModal } from './components/settings/LensEditorModal';
 import { PromptLibraryModal } from './components/settings/PromptLibraryModal';
 import { RevisionsModal } from './components/settings/RevisionsModal';
 import { NotesModal } from './components/settings/NotesModal';
-import { ImportAssistantModal } from './components/settings/ImportAssistantModal';
 import { applyQuoteReplacement } from './utils/diff';
-import type { CritiqueCategory, RevisionSnapshot } from './types';
+import type { CritiqueCategory, RevisionSnapshot, NotesTab, StudioTab } from './types';
 import { Plus, Upload, BookOpen, Sparkles, X, Minimize2 } from 'lucide-react';
 import { VersoLogo } from './components/layout/VersoLogo';
 
@@ -27,7 +26,7 @@ export function App() {
     createManuscript,
     importManuscriptFile,
     importSceneFile,
-    applyProfilingData,
+    applySceneSplits,
     scenes,
     activeScene,
     activeSceneId,
@@ -37,6 +36,7 @@ export function App() {
     addScene,
     deleteScene,
     renameScene,
+    updateSceneMetadata,
     updateManuscript,
     settings,
     updateSettings,
@@ -70,8 +70,14 @@ export function App() {
     chatHistory,
     isAskLoading,
     askQuestion,
-    isProfilingLoading,
-    runManuscriptProfile,
+    profilingLoading,
+    runProfilingModule,
+    fullManuscriptContent,
+    draftResult,
+    draftStreamingText,
+    isDraftLoading,
+    runSceneDraft,
+    abortSceneDraft,
   } = useCritique(settings, manuscript, scenes, activeScene);
 
   const {
@@ -85,9 +91,7 @@ export function App() {
   // UI layout states
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isStudioOpen, setIsStudioOpen] = useState(true);
-  const [studioTab, setStudioTab] = useState<
-    'critique' | 'cold_reader' | 'intent' | 'compare' | 'ask'
-  >('critique');
+  const [studioTab, setStudioTab] = useState<StudioTab>('draft');
   const [activeSelectedText, setActiveSelectedText] = useState('');
   const [activeAnnotationQuote, setActiveAnnotationQuote] = useState<string | null>(null);
 
@@ -96,8 +100,7 @@ export function App() {
   const emptyFileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
-  // Import Assistant & Notifications
-  const [isImportAssistantOpen, setIsImportAssistantOpen] = useState(false);
+  // Import Notifications
   const [importBanner, setImportBanner] = useState<{ title: string; wordCount: number } | null>(null);
 
   // Focus Mode Toast Notification
@@ -119,18 +122,13 @@ export function App() {
   const [isPromptLibraryOpen, setIsPromptLibraryOpen] = useState(false);
   const [isRevisionsOpen, setIsRevisionsOpen] = useState(false);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
-  const [notesDefaultTab, setNotesDefaultTab] = useState<'synopsis' | 'characters' | 'motifs'>('synopsis');
+  const [notesDefaultTab, setNotesDefaultTab] = useState<NotesTab>('synopsis');
 
-  // Full text of the manuscript across all scenes in sequential order for whole-book profiling
-  const fullManuscriptContent = useMemo(() => {
-    if (!scenes || scenes.length === 0) return '';
-    return scenes
-      .slice()
-      .sort((a, b) => a.order - b.order)
-      .map((s) => s.content)
-      .filter(Boolean)
-      .join('\n\n');
-  }, [scenes]);
+  // 打开文学备忘并定位到指定 tab
+  const handleOpenNotesTab = useCallback((tab: NotesTab) => {
+    setNotesDefaultTab(tab);
+    setIsNotesOpen(true);
+  }, []);
 
   // Handle floating selection action
   const handleSelectionAction = useCallback(
@@ -210,6 +208,36 @@ export function App() {
       });
     },
     [restoreRevisionAtomic, activeScene, updateSceneContent]
+  );
+
+  // Apply generated draft to active scene with safety checkpoints
+  const handleApplyDraftToScene = useCallback(
+    async (content: string, mode: 'replace' | 'append') => {
+      if (!activeScene) return;
+
+      if (mode === 'replace') {
+        if (activeScene.content && activeScene.content.trim().length > 0) {
+          await addRevision(activeScene.content, '采纳 AI 场景起草前自动快照', 'checkpoint');
+        }
+        updateSceneContent(content);
+        await addRevision(content, `采纳 AI 场景起草生成初稿 (~${content.length} 字)`, 'ai_accepted');
+      } else {
+        const current = activeScene.content || '';
+        const merged = current ? `${current}\n\n${content}` : content;
+        updateSceneContent(merged);
+        await addRevision(merged, `追加 AI 续写/扩写内容到场景 (~${content.length} 字)`, 'ai_accepted');
+      }
+    },
+    [activeScene, addRevision, updateSceneContent]
+  );
+
+  // Save generated draft as a revision checkpoint for comparison
+  const handleSaveDraftAsRevision = useCallback(
+    async (content: string, description: string) => {
+      if (!activeScene) return;
+      await addRevision(content, description, 'checkpoint');
+    },
+    [activeScene, addRevision]
   );
 
   // Quick create from welcome screen
@@ -292,10 +320,6 @@ export function App() {
           setIsNotesOpen(false);
           return;
         }
-        if (isImportAssistantOpen) {
-          setIsImportAssistantOpen(false);
-          return;
-        }
         if (settings.focusMode) {
           e.preventDefault();
           updateSettings({ ...settings, focusMode: false });
@@ -335,7 +359,6 @@ export function App() {
     isPromptLibraryOpen,
     isRevisionsOpen,
     isNotesOpen,
-    isImportAssistantOpen,
   ]);
 
   // First-time onboarding: prompt user to set up API Key / Profile if none exists
@@ -428,7 +451,6 @@ export function App() {
             onCreateManuscript={createManuscript}
             onImportManuscriptFile={(file) => handleImportFile(file, true)}
             onImportSceneFile={(file) => handleImportFile(file, false)}
-            onOpenImportAssistant={() => setIsImportAssistantOpen(true)}
             scenes={scenes}
             activeSceneId={activeSceneId}
             onSelectScene={setActiveSceneId}
@@ -436,18 +458,7 @@ export function App() {
             onDeleteScene={deleteScene}
             onRenameScene={renameScene}
             onOpenRevisions={() => setIsRevisionsOpen(true)}
-            onOpenSynopsis={() => {
-              setNotesDefaultTab('synopsis');
-              setIsNotesOpen(true);
-            }}
-            onOpenCharacterNotes={() => {
-              setNotesDefaultTab('characters');
-              setIsNotesOpen(true);
-            }}
-            onOpenMotifs={() => {
-              setNotesDefaultTab('motifs');
-              setIsNotesOpen(true);
-            }}
+            onOpenNotesTab={handleOpenNotesTab}
             onOpenPromptLibrary={() => setIsPromptLibraryOpen(true)}
           />
         )}
@@ -478,6 +489,10 @@ export function App() {
               content={activeScene.content}
               onChange={updateSceneContent}
               onSelectionAction={handleSelectionAction}
+              onOpenDraftStudio={() => {
+                setIsStudioOpen(true);
+                setStudioTab('draft');
+              }}
               activeAnnotationQuote={activeAnnotationQuote}
               paperTheme={settings.paperTheme}
               typography={settings.typography}
@@ -583,6 +598,14 @@ export function App() {
             onClose={() => setIsStudioOpen(false)}
             activeTab={studioTab}
             onTabChange={setStudioTab}
+            draftResult={draftResult}
+            draftStreamingText={draftStreamingText}
+            isDraftLoading={isDraftLoading}
+            onGenerateDraft={runSceneDraft}
+            onAbortDraft={abortSceneDraft}
+            onApplyDraftToScene={handleApplyDraftToScene}
+            onSaveDraftAsRevision={handleSaveDraftAsRevision}
+            onUpdateSceneSummary={(sceneId, summary) => updateSceneMetadata(sceneId, { summary })}
             critiqueSummary={critiqueSummary}
             annotations={annotations}
             onAcceptAnnotation={handleAcceptAnnotation}
@@ -632,7 +655,7 @@ export function App() {
                   《{importBanner.title}》导入完成
                 </div>
                 <p className="text-ink-muted text-[11px] mt-0.5 leading-relaxed">
-                  已载入 ~{importBanner.wordCount} 字。是否启动 AI 进行文学建档（自动提取人物小传、意象网络与分场建议）？
+                  已载入 ~{importBanner.wordCount} 字。可前往文学备忘，用 AI 逐项提取梗概、主题、人物、意象与分场建议。
                 </p>
               </div>
             </div>
@@ -653,12 +676,12 @@ export function App() {
             <button
               onClick={() => {
                 setImportBanner(null);
-                setIsImportAssistantOpen(true);
+                handleOpenNotesTab('synopsis');
               }}
               className="px-3 py-1 bg-cinnabar hover:bg-cinnabar-strong text-white text-[11px] font-medium rounded shadow-xs flex items-center space-x-1"
             >
               <Sparkles className="w-3 h-3" />
-              <span>启动智能建档</span>
+              <span>打开文学备忘</span>
             </button>
           </div>
         </div>
@@ -706,18 +729,14 @@ export function App() {
         onClose={() => setIsNotesOpen(false)}
         manuscript={manuscript}
         onUpdateManuscript={updateManuscript}
-        defaultTab={notesDefaultTab}
-      />
-
-      <ImportAssistantModal
-        isOpen={isImportAssistantOpen}
-        onClose={() => setIsImportAssistantOpen(false)}
-        manuscript={manuscript}
         manuscriptContent={fullManuscriptContent}
-        scenesCount={scenes.length}
-        isLoading={isProfilingLoading}
-        onRunProfile={runManuscriptProfile}
-        onApplyProfile={applyProfilingData}
+        scenes={scenes}
+        profilingLoading={profilingLoading}
+        onRunProfilingModule={runProfilingModule}
+        onApplySceneSplits={(splits) =>
+          manuscript ? applySceneSplits(manuscript.id, splits) : Promise.resolve()
+        }
+        defaultTab={notesDefaultTab}
       />
     </div>
   );

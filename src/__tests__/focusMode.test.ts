@@ -38,7 +38,6 @@ describe('Focus Mode & Fullscreen Exit Logic', () => {
       isPromptLibraryOpen: false,
       isRevisionsOpen: false,
       isNotesOpen: false,
-      isImportAssistantOpen: false,
     };
 
     const handleEscapeKey = (
@@ -81,7 +80,6 @@ describe('Focus Mode & Fullscreen Exit Logic', () => {
       isPromptLibraryOpen: false,
       isRevisionsOpen: false,
       isNotesOpen: false,
-      isImportAssistantOpen: false,
     };
 
     let closedModalName: string | null = null;
