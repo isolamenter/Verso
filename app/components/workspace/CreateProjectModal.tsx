@@ -7,9 +7,15 @@ export interface CreateProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
   editingProject?: ProjectSummary | null;
+  onSwitchToImport?: () => void;
 }
 
-export function CreateProjectModal({ isOpen, onClose, editingProject }: CreateProjectModalProps) {
+export function CreateProjectModal({
+  isOpen,
+  onClose,
+  editingProject,
+  onSwitchToImport,
+}: CreateProjectModalProps) {
   const { t } = useI18n();
   const fetcher = useFetcher();
   const [title, setTitle] = useState("");
@@ -61,9 +67,23 @@ export function CreateProjectModal({ isOpen, onClose, editingProject }: CreatePr
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5 border-b border-ink-muted/15 pb-3">
-          <h3 className="text-lg font-semibold text-ink">
-            {editingProject ? t("common.edit") : t("workspace.createProject")}
-          </h3>
+          <div className="flex items-center space-x-3">
+            <h3 className="text-lg font-semibold text-ink">
+              {editingProject ? t("common.edit") : t("workspace.createProject")}
+            </h3>
+            {!editingProject && onSwitchToImport && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onSwitchToImport();
+                }}
+                className="text-xs text-cinnabar hover:underline font-serif"
+              >
+                📥 {t("workspace.importOriginal")}
+              </button>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="text-ink-muted hover:text-ink text-sm p-1 rounded"
@@ -83,7 +103,7 @@ export function CreateProjectModal({ isOpen, onClose, editingProject }: CreatePr
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="如：《长夜微光》、《江南考录》"
+              placeholder={t("workspace.projectTitlePlaceholder")}
               className="w-full px-3 py-2 text-sm bg-paper-light border border-ink-muted/25 rounded focus:outline-none focus:border-ink"
             />
           </div>
@@ -96,7 +116,7 @@ export function CreateProjectModal({ isOpen, onClose, editingProject }: CreatePr
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="简要记述作品的主旨、时代背景或核心命题..."
+              placeholder={t("workspace.projectDescPlaceholder")}
               className="w-full px-3 py-2 text-sm bg-paper-light border border-ink-muted/25 rounded focus:outline-none focus:border-ink resize-none"
             />
           </div>

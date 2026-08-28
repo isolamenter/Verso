@@ -7,6 +7,7 @@ import CharacterCount from "@tiptap/extension-character-count";
 import Placeholder from "@tiptap/extension-placeholder";
 import { useI18n } from "../../i18n";
 import { isTipTapDocJson, plainTextToTipTapDoc, extractPlainText } from "../../../shared/manuscript";
+import { parseUploadedFile } from "../../utils/fileImporter";
 
 export interface ManuscriptEditorProps {
   initialContent: string;
@@ -27,6 +28,7 @@ export function ManuscriptEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isComposingRef = useRef(false);
+  const editorFileInputRef = useRef<HTMLInputElement>(null);
 
   // Search & Replace State
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -51,7 +53,7 @@ export function ManuscriptEditor({
       }),
       CharacterCount,
       Placeholder.configure({
-        placeholder: "在此落笔。文字如积水，静候推敲……",
+        placeholder: t("workbench.editorPlaceholder"),
       }),
     ],
     content: initialDoc,
@@ -113,10 +115,10 @@ export function ManuscriptEditor({
 
     try {
       const json = JSON.stringify(editor.getJSON());
-      await onSave(json, "手动编辑修改");
+      await onSave(json, t("workbench.manualEditSaveDescription"));
       setIsDirty(false);
     } catch (err: any) {
-      setErrorMessage(err?.message || "保存修订失败，请重试。");
+      setErrorMessage(err?.message || t("workbench.saveError"));
     } finally {
       setIsSaving(false);
     }
@@ -124,10 +126,22 @@ export function ManuscriptEditor({
 
   const handleCancel = () => {
     if (isDirty) {
-      const confirmDiscard = window.confirm("有未保存的修改，确定要放弃并退出编辑吗？");
+      const confirmDiscard = window.confirm(t("workbench.unsavedChangesWarning"));
       if (!confirmDiscard) return;
     }
     onCancel();
+  };
+
+  const handleFileImport = async (file: File) => {
+    try {
+      const parsed = await parseUploadedFile(file);
+      if (editor && parsed.content) {
+        editor.commands.setContent(plainTextToTipTapDoc(parsed.content));
+        setIsDirty(true);
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || t("workbench.importError"));
+    }
   };
 
   // Search in editor
@@ -168,7 +182,7 @@ export function ManuscriptEditor({
             className={`p-1.5 rounded transition-colors ${
               editor.isActive("bold") ? "bg-ink text-paper" : "text-ink-muted hover:text-ink hover:bg-paper-light"
             }`}
-            title="加粗 (Ctrl+B)"
+            title={t("workbench.bold")}
           >
             <b>B</b>
           </button>
@@ -177,7 +191,7 @@ export function ManuscriptEditor({
             className={`p-1.5 rounded transition-colors ${
               editor.isActive("italic") ? "bg-ink text-paper" : "text-ink-muted hover:text-ink hover:bg-paper-light"
             }`}
-            title="斜体 (Ctrl+I)"
+            title={t("workbench.italic")}
           >
             <i>I</i>
           </button>
@@ -186,7 +200,7 @@ export function ManuscriptEditor({
             className={`p-1.5 rounded transition-colors ${
               editor.isActive("strike") ? "bg-ink text-paper" : "text-ink-muted hover:text-ink hover:bg-paper-light"
             }`}
-            title="删除线"
+            title={t("workbench.strike")}
           >
             <s>S</s>
           </button>
@@ -200,7 +214,7 @@ export function ManuscriptEditor({
                 ? "bg-ink text-paper"
                 : "text-ink-muted hover:text-ink hover:bg-paper-light"
             }`}
-            title="二级标题"
+            title={t("workbench.h2")}
           >
             H2
           </button>
@@ -211,7 +225,7 @@ export function ManuscriptEditor({
                 ? "bg-ink text-paper"
                 : "text-ink-muted hover:text-ink hover:bg-paper-light"
             }`}
-            title="三级标题"
+            title={t("workbench.h3")}
           >
             H3
           </button>
@@ -222,7 +236,7 @@ export function ManuscriptEditor({
                 ? "bg-ink text-paper"
                 : "text-ink-muted hover:text-ink hover:bg-paper-light"
             }`}
-            title="引用块"
+            title={t("workbench.blockquote")}
           >
             ”
           </button>
@@ -236,9 +250,9 @@ export function ManuscriptEditor({
                 ? "bg-ink text-paper"
                 : "text-ink-muted hover:text-ink hover:bg-paper-light"
             }`}
-            title="无序列表"
+            title={t("workbench.bulletList")}
           >
-            • 列表
+            {t("workbench.bulletListLabel")}
           </button>
 
           <div className="h-4 w-px bg-ink-muted/20 mx-1" />
@@ -247,7 +261,7 @@ export function ManuscriptEditor({
             onClick={() => editor.chain().focus().undo().run()}
             disabled={!editor.can().undo()}
             className="p-1.5 rounded text-ink-muted hover:text-ink disabled:opacity-30"
-            title="撤销 (Ctrl+Z)"
+            title={t("workbench.undo")}
           >
             ↺
           </button>
@@ -255,7 +269,7 @@ export function ManuscriptEditor({
             onClick={() => editor.chain().focus().redo().run()}
             disabled={!editor.can().redo()}
             className="p-1.5 rounded text-ink-muted hover:text-ink disabled:opacity-30"
-            title="重做 (Ctrl+Y)"
+            title={t("workbench.redo")}
           >
             ↻
           </button>
@@ -265,9 +279,30 @@ export function ManuscriptEditor({
             className={`p-1.5 rounded transition-colors ${
               isSearchOpen ? "bg-cinnabar/10 text-cinnabar" : "text-ink-muted hover:text-ink"
             }`}
-            title="查找与替换"
+            title={t("workbench.findAndReplace")}
           >
             🔍
+          </button>
+
+          <input
+            ref={editorFileInputRef}
+            type="file"
+            accept=".docx,.txt,.md,.markdown"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFileImport(file);
+              if (e.target) e.target.value = "";
+            }}
+          />
+
+          <button
+            onClick={() => editorFileInputRef.current?.click()}
+            className="p-1.5 rounded text-ink-muted hover:text-ink transition-colors flex items-center space-x-1"
+            title={t("workbench.loadFromFile")}
+          >
+            <span>📥</span>
+            <span className="text-[11px] hidden sm:inline">{t("workbench.loadFromFile")}</span>
           </button>
         </div>
 
@@ -275,7 +310,7 @@ export function ManuscriptEditor({
         <div className="flex items-center space-x-2">
           {isDirty && (
             <span className="text-[11px] text-cinnabar italic mr-1">
-              有未保存修改
+              {t("workbench.hasUnsavedChanges")}
             </span>
           )}
           <button
@@ -300,21 +335,21 @@ export function ManuscriptEditor({
         <div className="border-b border-ink-muted/15 bg-paper-light px-6 py-2 flex items-center space-x-3 text-xs font-serif">
           <input
             type="text"
-            placeholder="查找内容..."
+            placeholder={t("workbench.findPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="px-2.5 py-1 bg-paper border border-ink-muted/25 rounded text-ink text-xs focus:outline-none focus:border-ink w-48"
           />
           <input
             type="text"
-            placeholder="替换为..."
+            placeholder={t("workbench.replacePlaceholder")}
             value={replaceQuery}
             onChange={(e) => setReplaceQuery(e.target.value)}
             className="px-2.5 py-1 bg-paper border border-ink-muted/25 rounded text-ink text-xs focus:outline-none focus:border-ink w-48"
           />
           {searchQuery && (
             <span className="text-[11px] text-ink-muted">
-              {matchCount} 个匹配
+              {t("workbench.matchCount", { count: matchCount })}
             </span>
           )}
           <button
@@ -322,7 +357,7 @@ export function ManuscriptEditor({
             disabled={matchCount === 0}
             className="px-2.5 py-1 rounded border border-ink-muted/20 text-ink hover:bg-paper disabled:opacity-40"
           >
-            全部替换
+            {t("workbench.replaceAll")}
           </button>
           <button
             onClick={() => setIsSearchOpen(false)}

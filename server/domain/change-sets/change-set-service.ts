@@ -180,6 +180,19 @@ export class ChangeSetService {
         }
       }
 
+      if (op.operationType === "split_scene") {
+        const payload = op.structuredPayload as Record<string, any>;
+        const splits = payload?.splits;
+        if (!Array.isArray(splits) || splits.length < 2) {
+          return {
+            isValid: false,
+            status: "conflict",
+            reason: "Split scene operation requires at least 2 split targets in payload",
+          };
+        }
+        return { isValid: true, status: "proposed" };
+      }
+
       return { isValid: true, status: "proposed" };
     }
 
@@ -309,73 +322,209 @@ export class ChangeSetService {
               );
             }
 
-            let newContentJson = scene.content;
+            if (op.operationType === "split_scene") {
+              const payload = op.structuredPayload as Record<string, any>;
+              const splits: Array<{
+                title: string;
+                summary?: string;
+                content: string;
+                pov?: string;
+                timeframe?: string;
+              }> = payload?.splits || [];
 
-            if (
-              op.operationType === "replace_text_range" ||
-              op.operationType === "delete_text_range" ||
-              op.operationType === "insert_text"
-            ) {
-              const patchRes = applyPlainTextPatchToTipTapDoc(scene.content, {
-                quote: op.quote || undefined,
-                prefixAnchor: op.prefixAnchor || undefined,
-                suffixAnchor: op.suffixAnchor || undefined,
-                replacementContent: op.replacementContent || "",
+              if (splits.length === 0) {
+                throw new Error(`Invalid split_scene payload on scene ${scene.id}: no splits provided`);
+              }
+
+              // 1. First split updates the target scene (scene.id)
+              const firstSplit = splits[0];
+              const firstDoc = isTipTapDocJson(firstSplit.content)
+                ? JSON.parse(firstSplit.content)
+                : plainTextToTipTapDoc(firstSplit.content);
+              const firstContentJson = JSON.stringify(firstDoc);
+
+              const [latestRev] = await tx
+                .select()
+                .from(sceneRevisions)
+                .where(eq(sceneRevisions.sceneId, scene.id))
+                .orderBy(desc(sceneRevisions.revisionNumber))
+                .limit(1);
+
+              const nextRevisionNumber = (latestRev?.revisionNumber ?? 0) + 1;
+              const newRevisionId = crypto.randomUUID();
+              const checksum = computeTextChecksum(firstContentJson);
+
+              await tx.insert(sceneRevisions).values({
+                id: newRevisionId,
+                sceneId: scene.id,
+                projectId,
+                revisionNumber: nextRevisionNumber,
+                content: firstContentJson,
+                changeType: "agent_applied",
+                description: `分场重组：第 1 场《${firstSplit.title}》`,
+                diffSummary: JSON.stringify({
+                  changeSetId,
+                  operationId: op.id,
+                  operationType: "split_scene",
+                  splitIndex: 0,
+                }),
+                characterCount: firstContentJson.length,
+                appliedChangeSetId: changeSetId,
+                metadata: { checksum },
               });
 
-              if (!patchRes.success) {
-                throw new Error(`Failed to apply patch to scene ${scene.id}: ${patchRes.error}`);
+              await tx
+                .update(scenes)
+                .set({
+                  title: firstSplit.title || scene.title,
+                  summary: firstSplit.summary ?? scene.summary,
+                  pov: firstSplit.pov ?? scene.pov,
+                  timeframe: firstSplit.timeframe ?? scene.timeframe,
+                  content: firstContentJson,
+                  characterCount: firstContentJson.length,
+                  currentRevisionId: newRevisionId,
+                  updatedAt: new Date(),
+                })
+                .where(eq(scenes.id, scene.id));
+
+              resultingRevisionMap[scene.id] = newRevisionId;
+
+              // 2. Subsequent splits become new scenes in the same manuscript
+              if (splits.length > 1) {
+                const addedCount = splits.length - 1;
+                // Shift subsequent scenes with order > scene.order by addedCount
+                const laterScenes = await tx
+                  .select()
+                  .from(scenes)
+                  .where(and(eq(scenes.manuscriptId, scene.manuscriptId), eq(scenes.projectId, projectId)))
+                  .orderBy(desc(scenes.order));
+
+                for (const later of laterScenes) {
+                  if (later.id !== scene.id && later.order > scene.order) {
+                    await tx
+                      .update(scenes)
+                      .set({ order: later.order + addedCount })
+                      .where(eq(scenes.id, later.id));
+                  }
+                }
+
+                // Insert new scenes
+                for (let k = 1; k < splits.length; k++) {
+                  const splitItem = splits[k];
+                  const splitDoc = isTipTapDocJson(splitItem.content)
+                    ? JSON.parse(splitItem.content)
+                    : plainTextToTipTapDoc(splitItem.content);
+                  const splitContentJson = JSON.stringify(splitDoc);
+                  const newSceneId = crypto.randomUUID();
+                  const newSceneRevId = crypto.randomUUID();
+                  const splitChecksum = computeTextChecksum(splitContentJson);
+                  const targetOrder = scene.order + k;
+
+                  await tx.insert(scenes).values({
+                    id: newSceneId,
+                    manuscriptId: scene.manuscriptId,
+                    projectId,
+                    title: splitItem.title || `第 ${k + 1} 场`,
+                    order: targetOrder,
+                    content: splitContentJson,
+                    characterCount: splitContentJson.length,
+                    summary: splitItem.summary,
+                    pov: splitItem.pov,
+                    timeframe: splitItem.timeframe,
+                    currentRevisionId: newSceneRevId,
+                  });
+
+                  await tx.insert(sceneRevisions).values({
+                    id: newSceneRevId,
+                    sceneId: newSceneId,
+                    projectId,
+                    revisionNumber: 1,
+                    content: splitContentJson,
+                    changeType: "agent_applied",
+                    description: `分场重组：第 ${k + 1} 场《${splitItem.title}》`,
+                    diffSummary: JSON.stringify({
+                      changeSetId,
+                      operationId: op.id,
+                      operationType: "split_scene",
+                      splitIndex: k,
+                    }),
+                    characterCount: splitContentJson.length,
+                    appliedChangeSetId: changeSetId,
+                    metadata: { checksum: splitChecksum },
+                  });
+
+                  resultingRevisionMap[newSceneId] = newSceneRevId;
+                }
               }
-              newContentJson = patchRes.newDocJson;
-            } else if (op.operationType === "replace_scene") {
-              const doc = isTipTapDocJson(op.replacementContent || "")
-                ? JSON.parse(op.replacementContent || "{}")
-                : plainTextToTipTapDoc(op.replacementContent || "");
-              newContentJson = JSON.stringify(doc);
-            }
+            } else {
+              let newContentJson = scene.content;
 
-            // Get next monotonic revision number
-            const [latestRev] = await tx
-              .select()
-              .from(sceneRevisions)
-              .where(eq(sceneRevisions.sceneId, scene.id))
-              .orderBy(desc(sceneRevisions.revisionNumber))
-              .limit(1);
+              if (
+                op.operationType === "replace_text_range" ||
+                op.operationType === "delete_text_range" ||
+                op.operationType === "insert_text"
+              ) {
+                const patchRes = applyPlainTextPatchToTipTapDoc(scene.content, {
+                  quote: op.quote || undefined,
+                  prefixAnchor: op.prefixAnchor || undefined,
+                  suffixAnchor: op.suffixAnchor || undefined,
+                  replacementContent: op.replacementContent || "",
+                });
 
-            const nextRevisionNumber = (latestRev?.revisionNumber ?? 0) + 1;
-            const newRevisionId = crypto.randomUUID();
-            const checksum = computeTextChecksum(newContentJson);
+                if (!patchRes.success) {
+                  throw new Error(`Failed to apply patch to scene ${scene.id}: ${patchRes.error}`);
+                }
+                newContentJson = patchRes.newDocJson;
+              } else if (op.operationType === "replace_scene") {
+                const doc = isTipTapDocJson(op.replacementContent || "")
+                  ? JSON.parse(op.replacementContent || "{}")
+                  : plainTextToTipTapDoc(op.replacementContent || "");
+                newContentJson = JSON.stringify(doc);
+              }
 
-            // Insert new revision
-            await tx.insert(sceneRevisions).values({
-              id: newRevisionId,
-              sceneId: scene.id,
-              projectId,
-              revisionNumber: nextRevisionNumber,
-              content: newContentJson,
-              changeType: "agent_applied",
-              description: `AI 修订采纳: ${changeSet.title}`,
-              diffSummary: JSON.stringify({
-                changeSetId,
-                operationId: op.id,
-                operationType: op.operationType,
-              }),
-              characterCount: newContentJson.length,
-              appliedChangeSetId: changeSetId,
-              metadata: { checksum },
-            });
+              // Get next monotonic revision number
+              const [latestRev] = await tx
+                .select()
+                .from(sceneRevisions)
+                .where(eq(sceneRevisions.sceneId, scene.id))
+                .orderBy(desc(sceneRevisions.revisionNumber))
+                .limit(1);
 
-            // Update scene record
-            await tx
-              .update(scenes)
-              .set({
+              const nextRevisionNumber = (latestRev?.revisionNumber ?? 0) + 1;
+              const newRevisionId = crypto.randomUUID();
+              const checksum = computeTextChecksum(newContentJson);
+
+              // Insert new revision
+              await tx.insert(sceneRevisions).values({
+                id: newRevisionId,
+                sceneId: scene.id,
+                projectId,
+                revisionNumber: nextRevisionNumber,
                 content: newContentJson,
-                currentRevisionId: newRevisionId,
-                updatedAt: new Date(),
-              })
-              .where(eq(scenes.id, scene.id));
+                changeType: "agent_applied",
+                description: `AI 修订采纳: ${changeSet.title}`,
+                diffSummary: JSON.stringify({
+                  changeSetId,
+                  operationId: op.id,
+                  operationType: op.operationType,
+                }),
+                characterCount: newContentJson.length,
+                appliedChangeSetId: changeSetId,
+                metadata: { checksum },
+              });
 
-            resultingRevisionMap[scene.id] = newRevisionId;
+              // Update scene record
+              await tx
+                .update(scenes)
+                .set({
+                  content: newContentJson,
+                  currentRevisionId: newRevisionId,
+                  updatedAt: new Date(),
+                })
+                .where(eq(scenes.id, scene.id));
+
+              resultingRevisionMap[scene.id] = newRevisionId;
+            }
           } else if (op.targetType === "knowledge_node") {
             if (op.operationType === "create_knowledge") {
               const newNodeId = op.targetId || crypto.randomUUID();

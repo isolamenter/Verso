@@ -11,6 +11,7 @@ export interface ManuscriptViewerProps {
   sceneTitle: string;
   onAttachQuoteToAgent: (quote: string) => void;
   onEnterManualEdit: () => void;
+  onOpenImport?: () => void;
 }
 
 export function ManuscriptViewer({
@@ -18,6 +19,7 @@ export function ManuscriptViewer({
   sceneTitle,
   onAttachQuoteToAgent,
   onEnterManualEdit,
+  onOpenImport,
 }: ManuscriptViewerProps) {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -123,14 +125,27 @@ export function ManuscriptViewer({
       </div>
 
       {isEmpty ? (
-        <div className="text-center py-16 text-ink-muted font-serif">
-          <p className="text-sm mb-3">场景尚无内容。</p>
-          <button
-            onClick={onEnterManualEdit}
-            className="px-4 py-1.5 rounded bg-ink text-paper text-xs hover:bg-ink/90 transition-colors"
-          >
-            {t("workbench.manualEditMode")}
-          </button>
+        <div className="text-center py-16 text-ink-muted font-serif max-w-sm mx-auto">
+          <div className="text-3xl mb-2 text-ink-muted/60">🖋️</div>
+          <p className="text-sm mb-1 text-ink">{t("workbench.emptyScene")}</p>
+          <p className="text-xs text-ink-muted/80 mb-5">{t("workbench.emptySceneImportPrompt")}</p>
+          <div className="flex items-center justify-center space-x-3">
+            {onOpenImport && (
+              <button
+                onClick={onOpenImport}
+                className="px-4 py-1.5 rounded border border-ink-muted/30 hover:border-cinnabar text-ink text-xs transition-colors flex items-center space-x-1.5"
+              >
+                <span>📥</span>
+                <span>{t("workbench.importOriginal")}</span>
+              </button>
+            )}
+            <button
+              onClick={onEnterManualEdit}
+              className="px-4 py-1.5 rounded bg-ink text-paper text-xs hover:bg-ink/90 transition-colors"
+            >
+              {t("workbench.manualEditMode")}
+            </button>
+          </div>
         </div>
       ) : (
         <div className="relative">
@@ -145,18 +160,18 @@ export function ManuscriptViewer({
               <button
                 onClick={handleAttach}
                 className="hover:text-cinnabar transition-colors flex items-center space-x-1"
-                title="附加选中文本至右侧助手对话框"
+                title={t("workbench.attachSelectionToAgent")}
               >
                 <span>✦</span>
-                <span>附加至对话</span>
+                <span>{t("workbench.attachToChat")}</span>
               </button>
               <span className="text-paper/40">|</span>
               <button
                 onClick={onEnterManualEdit}
                 className="hover:text-paper/80 transition-colors"
-                title="以此处为起点进入手动编辑"
+                title={t("workbench.editFromHere")}
               >
-                进入编辑
+                {t("workbench.editManually")}
               </button>
             </div>
           )}

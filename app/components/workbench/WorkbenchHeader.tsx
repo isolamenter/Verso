@@ -11,6 +11,7 @@ export interface WorkbenchHeaderProps {
   onSelectScene: (sceneId: string) => void;
   isEditing: boolean;
   onToggleEditMode: () => void;
+  onOpenImportModal?: () => void;
   currentContent?: string;
 }
 
@@ -22,6 +23,7 @@ export function WorkbenchHeader({
   onSelectScene,
   isEditing,
   onToggleEditMode,
+  onOpenImportModal,
   currentContent = "",
 }: WorkbenchHeaderProps) {
   const { t, locale } = useI18n();
@@ -73,16 +75,28 @@ export function WorkbenchHeader({
       <div className="flex items-center space-x-4 text-xs text-ink-muted">
         {/* Character & Reading Time Stats */}
         <div className="hidden sm:flex items-center space-x-2 text-[11px] font-mono">
-          <span>{stats.chineseCharacters + stats.totalWords} 字</span>
+          <span>{t("workbench.wordCount", { count: stats.chineseCharacters + stats.totalWords })}</span>
           <span>·</span>
-          <span>约 {stats.readingTimeMinutes} 分钟</span>
+          <span>{t("workbench.readingTime", { count: stats.readingTimeMinutes })}</span>
           {manuscripts.length > 1 && (
             <>
               <span>·</span>
-              <span>{manuscripts.length} 卷</span>
+              <span>{t("workbench.manuscriptCount", { count: manuscripts.length })}</span>
             </>
           )}
         </div>
+
+        {/* Import Original Text button */}
+        {onOpenImportModal && (
+          <button
+            onClick={onOpenImportModal}
+            className="px-2.5 py-1 text-xs font-serif rounded border border-ink-muted/25 text-ink hover:bg-paper-light transition-colors shadow-2xs flex items-center space-x-1"
+            title={t("workbench.importOriginal")}
+          >
+            <span>📥</span>
+            <span>{t("workbench.importOriginal")}</span>
+          </button>
+        )}
 
         {/* Edit mode toggle button */}
         <button
@@ -100,7 +114,7 @@ export function WorkbenchHeader({
         <button
           onClick={toggleLocale}
           className="p-1 rounded text-ink-muted hover:text-ink text-xs transition-colors"
-          title="Switch Language"
+          title={t("workspace.switchLanguage")}
         >
           {locale === "zh-CN" ? "EN" : "中"}
         </button>

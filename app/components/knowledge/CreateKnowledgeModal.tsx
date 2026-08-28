@@ -15,16 +15,6 @@ export interface CreateKnowledgeModalProps {
   initialNode?: KnowledgeNode | null;
 }
 
-const KINDS: Array<{ value: KnowledgeKind; label: string }> = [
-  { value: "character", label: "人物角色" },
-  { value: "world_rule", label: "世界法则 / 设定" },
-  { value: "location", label: "地点背景" },
-  { value: "theme", label: "主题意象" },
-  { value: "timeline", label: "历史 / 时间线" },
-  { value: "motif", label: "叙事母题" },
-  { value: "custom", label: "通用 / 其他" },
-];
-
 export function CreateKnowledgeModal({
   isOpen,
   onClose,
@@ -32,6 +22,17 @@ export function CreateKnowledgeModal({
   initialNode,
 }: CreateKnowledgeModalProps) {
   const { t } = useI18n();
+
+  const kinds: Array<{ value: KnowledgeKind; label: string }> = [
+    { value: "character", label: t("knowledge.catCharacter") },
+    { value: "world_rule", label: t("knowledge.catWorldRule") },
+    { value: "location", label: t("knowledge.catLocation") },
+    { value: "theme", label: t("knowledge.catTheme") },
+    { value: "timeline", label: t("knowledge.catTimeline") },
+    { value: "motif", label: t("knowledge.catMotif") },
+    { value: "custom", label: t("knowledge.catCustom") },
+  ];
+
   const [kind, setKind] = useState<KnowledgeKind>(
     (initialNode?.kind as KnowledgeKind) || "character"
   );
@@ -65,7 +66,7 @@ export function CreateKnowledgeModal({
       <div className="bg-paper border border-ink-muted/25 rounded-lg shadow-xl max-w-lg w-full p-6 animate-scale-in space-y-4">
         <div className="flex items-center justify-between border-b border-ink-muted/15 pb-3">
           <h3 className="text-sm font-semibold text-ink">
-            {initialNode ? "编辑设定素材条目" : "新增设定素材条目"}
+            {initialNode ? t("knowledge.editNodeTitle") : t("knowledge.addNodeTitle")}
           </h3>
           <button
             onClick={onClose}
@@ -77,13 +78,13 @@ export function CreateKnowledgeModal({
 
         <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
           <div>
-            <label className="block text-ink font-medium mb-1">素材类别</label>
+            <label className="block text-ink font-medium mb-1">{t("knowledge.nodeCategoryLabel")}</label>
             <select
               value={kind}
               onChange={(e) => setKind(e.target.value as KnowledgeKind)}
               className="w-full px-3 py-2 bg-paper-light border border-ink-muted/25 rounded text-ink focus:outline-none focus:border-ink font-serif"
             >
-              {KINDS.map((k) => (
+              {kinds.map((k) => (
                 <option key={k.value} value={k.value}>
                   {k.label}
                 </option>
@@ -92,35 +93,35 @@ export function CreateKnowledgeModal({
           </div>
 
           <div>
-            <label className="block text-ink font-medium mb-1">条目标题 / 称谓 *</label>
+            <label className="block text-ink font-medium mb-1">{t("knowledge.nodeTitleLabel")}</label>
             <input
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="例如：林晚风（主角）、九霄剑阵、北境雪原"
+              placeholder={t("knowledge.nodeTitlePlaceholder")}
               className="w-full px-3 py-2 bg-paper-light border border-ink-muted/25 rounded text-ink focus:outline-none focus:border-ink font-serif"
             />
           </div>
 
           <div>
-            <label className="block text-ink font-medium mb-1">一句话摘要</label>
+            <label className="block text-ink font-medium mb-1">{t("knowledge.nodeSummaryLabel")}</label>
             <input
               type="text"
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
-              placeholder="简要概括核心特征或设定要点"
+              placeholder={t("knowledge.nodeSummaryPlaceholder")}
               className="w-full px-3 py-2 bg-paper-light border border-ink-muted/25 rounded text-ink focus:outline-none focus:border-ink font-serif"
             />
           </div>
 
           <div>
-            <label className="block text-ink font-medium mb-1">详细设定与背景说明</label>
+            <label className="block text-ink font-medium mb-1">{t("knowledge.nodeContentLabel")}</label>
             <textarea
               rows={5}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="输入完整的人物小传、性格口癖、法术规则、地理环境或叙事背景..."
+              placeholder={t("knowledge.nodeContentPlaceholder")}
               className="w-full px-3 py-2 bg-paper-light border border-ink-muted/25 rounded text-ink focus:outline-none focus:border-ink font-serif leading-relaxed"
             />
           </div>
@@ -139,7 +140,7 @@ export function CreateKnowledgeModal({
               disabled={isSubmitting || !title.trim()}
               className="px-4 py-2 bg-ink text-paper rounded font-medium hover:bg-ink/90 disabled:opacity-40 transition-colors shadow-xs"
             >
-              {isSubmitting ? t("common.saving") : initialNode ? "保存修改" : "确认添加"}
+              {isSubmitting ? t("common.saving") : initialNode ? t("knowledge.saveChanges") : t("knowledge.confirmAdd")}
             </button>
           </div>
         </form>

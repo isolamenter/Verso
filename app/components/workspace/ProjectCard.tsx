@@ -30,6 +30,21 @@ export function ProjectCard({ project, onRename }: ProjectCardProps) {
     setShowMenu(false);
   };
 
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const confirmed = window.confirm(
+      t("workspace.confirmDeleteProject", { title: project.title })
+    );
+    if (!confirmed) return;
+
+    fetcher.submit(
+      { intent: "delete_project", projectId: project.id },
+      { method: "post" }
+    );
+    setShowMenu(false);
+  };
+
   return (
     <div className="relative group bg-paper border border-ink-muted/15 hover:border-ink-muted/35 rounded-md p-5 transition-all shadow-xs flex flex-col justify-between h-48">
       <div>
@@ -69,7 +84,13 @@ export function ProjectCard({ project, onRename }: ProjectCardProps) {
                   onClick={handleArchive}
                   className="w-full text-left px-3 py-1.5 text-ink hover:bg-paper-light"
                 >
-                  {project.archived ? "取消归档" : t("common.archived")}
+                  {project.archived ? t("common.unarchive") : t("common.archived")}
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="w-full text-left px-3 py-1.5 text-cinnabar hover:bg-paper-light border-t border-ink-muted/10 mt-1"
+                >
+                  {t("common.delete")}
                 </button>
               </div>
             )}
@@ -82,19 +103,19 @@ export function ProjectCard({ project, onRename }: ProjectCardProps) {
           </p>
         ) : (
           <p className="text-xs text-ink-faint mt-1.5 italic font-serif">
-            无附注描述
+            {t("workspace.noDescription")}
           </p>
         )}
       </div>
 
       <div className="pt-4 border-t border-ink-muted/10 flex items-center justify-between text-[11px] text-ink-muted">
         <div className="flex items-center space-x-2">
-          <span>{project.manuscriptCount > 0 ? `${project.manuscriptCount} 卷` : "1 卷"}</span>
+          <span>{t("workspace.volumeCount", { count: project.manuscriptCount > 0 ? project.manuscriptCount : 1 })}</span>
           <span>•</span>
-          <span>{project.sceneCount} 场景</span>
+          <span>{t("workspace.sceneCount", { count: project.sceneCount })}</span>
           {project.unresolvedChangesCount > 0 && (
             <span className="text-cinnabar font-medium">
-              ({project.unresolvedChangesCount} 待审)
+              ({t("workspace.pendingChangesCount", { count: project.unresolvedChangesCount })})
             </span>
           )}
         </div>

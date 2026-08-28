@@ -21,7 +21,7 @@ export function ProjectList({ projects, onRename, onOpenCreateModal }: ProjectLi
           {t("workspace.emptyProjects")}
         </h3>
         <p className="text-xs text-ink-muted mb-6 max-w-md mx-auto leading-relaxed font-serif">
-          Verso 为严肃创作者提供严谨的文本沙盒、素材谱系与审美记忆管理。
+          {t("workspace.platformIntro")}
         </p>
         <button
           onClick={onOpenCreateModal}

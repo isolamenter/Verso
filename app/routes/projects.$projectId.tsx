@@ -50,15 +50,21 @@ export async function action({ request, params }: { request: Request; params: { 
 
   if (intent === "save_scene_revision") {
     const sceneId = formData.get("sceneId") as string;
-    const content = formData.get("content") as string;
+    const rawContent = formData.get("content") as string;
+    const content = rawContent !== undefined && rawContent !== null ? rawContent.replace(/\r\n/g, "\n") : rawContent;
     const expectedBaseRevisionId = (formData.get("expectedBaseRevisionId") as string) || undefined;
     const description = (formData.get("description") as string) || "手动编辑修改";
+    const newTitle = formData.get("title") as string;
 
     if (!sceneId || content === undefined) {
       return { error: "Missing sceneId or content" };
     }
 
     try {
+      if (newTitle && newTitle.trim()) {
+        await projectRepository.updateScene(sceneId, { title: newTitle.trim() });
+      }
+
       const result = await manuscriptService.saveSceneContent(
         sceneId,
         projectId,
@@ -71,6 +77,31 @@ export async function action({ request, params }: { request: Request; params: { 
       );
 
       return { success: true, scene: result.scene, revision: result.revision };
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  }
+
+  if (intent === "create_scene") {
+    const manuscriptId = formData.get("manuscriptId") as string;
+    const title = (formData.get("title") as string) || "新场景";
+    const content = ((formData.get("content") as string) || "").replace(/\r\n/g, "\n");
+    const order = Number(formData.get("order") || 1);
+
+    if (!manuscriptId) {
+      return { error: "Missing manuscriptId" };
+    }
+
+    try {
+      const scene = await projectRepository.createScene({
+        manuscriptId,
+        projectId,
+        title,
+        content,
+        order,
+      });
+
+      return { success: true, scene };
     } catch (err: any) {
       return { error: err.message };
     }

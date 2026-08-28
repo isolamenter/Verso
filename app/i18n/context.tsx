@@ -6,7 +6,7 @@ import { translate, createLocaleCookieHeader } from "./core";
 export interface I18nContextValue {
   locale: Locale;
   setLocale: (nextLocale: Locale) => void;
-  t: (key: MessageKey | string, params?: Record<string, string | number>) => string;
+  t: (key: MessageKey, params?: Record<string, string | number>) => string;
   formatDate: (date: Date | string | number, options?: Intl.DateTimeFormatOptions) => string;
   formatRelativeTime: (date: Date | string | number, baseDate?: Date) => string;
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
@@ -35,7 +35,7 @@ export function I18nProvider({ children, initialLocale = DEFAULT_LOCALE }: I18nP
   }, []);
 
   const t = useCallback(
-    (key: MessageKey | string, params?: Record<string, string | number>): string => {
+    (key: MessageKey, params?: Record<string, string | number>): string => {
       return translate(locale, key, params);
     },
     [locale]
@@ -83,7 +83,7 @@ export function useI18n(): I18nContextValue {
     return {
       locale: DEFAULT_LOCALE,
       setLocale: () => {},
-      t: (key: string, params?: Record<string, string | number>) => translate(DEFAULT_LOCALE, key, params),
+      t: (key: MessageKey, params?: Record<string, string | number>) => translate(DEFAULT_LOCALE, key, params),
       formatDate: (date) => fmtDate(date, DEFAULT_LOCALE),
       formatRelativeTime: (date) => fmtRelative(date, DEFAULT_LOCALE),
       formatNumber: (val) => fmtNum(val, DEFAULT_LOCALE),

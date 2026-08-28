@@ -34,21 +34,17 @@ export function ResumeRecentCard({ project }: ResumeRecentCardProps) {
 
           <div className="flex items-center space-x-4 pt-1 text-xs text-ink-muted">
             <span>
-              {project.manuscriptCount > 0
-                ? `${project.manuscriptCount} 卷`
-                : "1 卷"}
+              {t("workspace.volumeCount", { count: project.manuscriptCount > 0 ? project.manuscriptCount : 1 })}
             </span>
             <span>•</span>
             <span>
-              {project.sceneCount > 0
-                ? `${project.sceneCount} 场景`
-                : "0 场景"}
+              {t("workspace.sceneCount", { count: project.sceneCount })}
             </span>
             {project.unresolvedChangesCount > 0 && (
               <>
                 <span>•</span>
                 <span className="text-cinnabar font-medium">
-                  {project.unresolvedChangesCount} 条待审改案
+                  {t("workspace.pendingReviewCount", { count: project.unresolvedChangesCount })}
                 </span>
               </>
             )}
@@ -60,7 +56,7 @@ export function ResumeRecentCard({ project }: ResumeRecentCardProps) {
             to={`/projects/${project.id}`}
             className="px-5 py-2.5 rounded-sm bg-ink text-paper hover:bg-ink/90 font-serif text-sm font-medium transition-colors shadow-sm flex items-center space-x-2"
           >
-            <span>进入工作台</span>
+            <span>{t("workspace.enterWorkbench")}</span>
             <span>→</span>
           </Link>
         </div>

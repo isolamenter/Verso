@@ -121,4 +121,40 @@ describe("E11 — Atomic Read Tools and Context Receipt Skeleton", () => {
     const recorded = receiptBuilder.getRecordedItems();
     expect(recorded.length).toBe(0);
   });
+
+  it("supports reading long manuscripts with offset, large limits, and truncation flags", async () => {
+    const project = await projectRepository.createProject({ title: "Long Novel Project" });
+    const manuscript = await projectRepository.createManuscript({ projectId: project.id, title: "全长篇正文" });
+
+    // Construct a ~35,000 character sample novel
+    const longText = "甲".repeat(15000) + "【第二阶段】" + "乙".repeat(15000) + "【第三阶段】" + "丙".repeat(5000);
+    const scene = await projectRepository.createScene({
+      manuscriptId: manuscript.id,
+      projectId: project.id,
+      title: "长篇全卷",
+      content: longText,
+    });
+
+    const thread = await agentRepository.createThread({ projectId: project.id, title: "Thread" });
+    const run = await agentRepository.createRun({ threadId: thread.id, projectId: project.id });
+    const ctx = { projectId: project.id, runId: run.id, threadId: thread.id };
+
+    // Default read without maxLength should read all 35k chars without truncation
+    const fullRead = (await readToolsEngine.readResource({ type: "scene", id: scene.id }, ctx)) as any;
+    expect(fullRead.characterCount).toBe(longText.length);
+    expect(fullRead.isTruncated).toBe(false);
+    expect(fullRead.content.length).toBe(longText.length);
+    expect(fullRead.content).toContain("【第二阶段】");
+    expect(fullRead.content).toContain("【第三阶段】");
+
+    // Partial read with offset and maxLength
+    const partialRead = (await readToolsEngine.readResource(
+      { type: "scene", id: scene.id, offset: 15000, maxLength: 100 },
+      ctx
+    )) as any;
+    expect(partialRead.isTruncated).toBe(true);
+    expect(partialRead.offset).toBe(15000);
+    expect(partialRead.content.startsWith("【第二阶段】")).toBe(true);
+    expect(partialRead.content.length).toBe(100);
+  });
 });

@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import zhCN from "../../../app/i18n/locales/zh-CN.json";
 import enUS from "../../../app/i18n/locales/en-US.json";
 import {
@@ -36,6 +38,45 @@ describe("E06 — Bilingual Product Foundation & Catalog Parity", () => {
     expect(missingInZh).toEqual([]);
     expect(zhKeys.length).toBeGreaterThan(30);
     expect(zhKeys).toEqual(enKeys);
+  });
+
+  it("ensures all t(...) calls across the app codebase exist in both catalogs", () => {
+    const zhKeys = new Set(getDeepKeys(zhCN));
+    const enKeys = new Set(getDeepKeys(enUS));
+
+    function walk(dir: string): string[] {
+      let files: string[] = [];
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (!["node_modules", ".git", "build", "dist"].includes(entry.name)) {
+            files = files.concat(walk(full));
+          }
+        } else if (/\.(tsx|ts)$/.test(entry.name)) {
+          files.push(full);
+        }
+      }
+      return files;
+    }
+
+    const appDir = path.resolve(__dirname, "../../../app");
+    const files = walk(appDir);
+    const tRegex = /\bt\(\s*["'`]([^"'`]+)["'`]/g;
+    const missingKeys: { file: string; key: string }[] = [];
+
+    for (const file of files) {
+      if (file.includes("app/i18n/")) continue;
+      const content = fs.readFileSync(file, "utf8");
+      let match;
+      while ((match = tRegex.exec(content)) !== null) {
+        const key = match[1];
+        if (!zhKeys.has(key) || !enKeys.has(key)) {
+          missingKeys.push({ file: path.relative(appDir, file), key });
+        }
+      }
+    }
+
+    expect(missingKeys).toEqual([]);
   });
 
   it("contains non-empty string values for all catalog keys", () => {

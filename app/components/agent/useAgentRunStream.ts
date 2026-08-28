@@ -26,7 +26,12 @@ export function useAgentRunStream({
   const [status, setStatus] = useState("idle");
   const [events, setEvents] = useState<any[]>([]);
 
+  const statusRef = useRef("idle");
   const eventSourceRef = useRef<EventSource | null>(null);
+  const onCompletedRef = useRef(onCompleted);
+  onCompletedRef.current = onCompleted;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   const cancel = useCallback(async () => {
     if (!runId) return;
@@ -45,69 +50,145 @@ export function useAgentRunStream({
 
   useEffect(() => {
     if (!runId) {
+      setIsStreaming(false);
+      setStatus("idle");
       return;
     }
 
     setStreamedText("");
     setStreamedThought("");
     setIsStreaming(true);
-    setStatus("running");
+    setStatus("planning");
+    statusRef.current = "planning";
+    setEvents([]);
 
     const es = new EventSource(`/api/runs/${runId}/events`);
     eventSourceRef.current = es;
 
-    es.onmessage = (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        setEvents((prev) => [...prev, payload]);
+    const closeStream = () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      setIsStreaming(false);
+    };
 
-        switch (payload.type) {
-          case "status":
-            setStatus(payload.status || "running");
-            break;
-          case "thought_delta":
-            setStreamedThought((prev) => prev + (payload.textDelta || ""));
-            break;
-          case "text_delta":
-            setStreamedText((prev) => prev + (payload.textDelta || ""));
-            break;
-          case "completed":
-            setStatus("completed");
-            setIsStreaming(false);
-            es.close();
-            eventSourceRef.current = null;
-            onCompleted?.();
-            break;
-          case "cancelled":
-            setStatus("cancelled");
-            setIsStreaming(false);
-            es.close();
-            eventSourceRef.current = null;
-            break;
-          case "error":
-            setStatus("failed");
-            setIsStreaming(false);
-            es.close();
-            eventSourceRef.current = null;
-            onError?.(payload.error || "Agent run failed");
-            break;
+    const handleStatusChange = (e: MessageEvent) => {
+      try {
+        const payload = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        setEvents((prev) => [...prev, { type: "status_change", ...payload }]);
+
+        const newStatus = payload.status;
+        if (newStatus) {
+          statusRef.current = newStatus;
+          setStatus(newStatus);
+          if (newStatus === "completed") {
+            closeStream();
+            onCompletedRef.current?.();
+          } else if (newStatus === "cancelled") {
+            closeStream();
+          } else if (newStatus === "failed") {
+            closeStream();
+            onErrorRef.current?.(payload.error || "Agent run failed");
+          }
         }
       } catch (err) {
-        console.error("Failed to parse SSE event:", err);
+        console.error("Failed to parse status_change event:", err);
       }
     };
 
+    const handleTextDelta = (e: MessageEvent) => {
+      try {
+        const payload = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        setEvents((prev) => [...prev, { type: "text_delta", ...payload }]);
+        const delta = payload.delta ?? payload.textDelta ?? "";
+        if (delta) {
+          setStreamedText((prev) => prev + delta);
+        }
+      } catch (err) {
+        console.error("Failed to parse text_delta event:", err);
+      }
+    };
+
+    const handleThoughtDelta = (e: MessageEvent) => {
+      try {
+        const payload = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        setEvents((prev) => [...prev, { type: "thought_delta", ...payload }]);
+        const delta = payload.delta ?? payload.textDelta ?? "";
+        if (delta) {
+          setStreamedThought((prev) => prev + delta);
+        }
+      } catch (err) {
+        console.error("Failed to parse thought_delta event:", err);
+      }
+    };
+
+    const handleErrorEvent = (e: MessageEvent) => {
+      try {
+        const payload = typeof e.data === "string" ? JSON.parse(e.data) : e.data || {};
+        const errMessage = payload?.error || payload?.message || "Agent run failed";
+        setEvents((prev) => [...prev, { type: "run_error", error: errMessage }]);
+        statusRef.current = "failed";
+        setStatus("failed");
+        closeStream();
+        onErrorRef.current?.(errMessage);
+      } catch (err) {
+        console.error("Failed to parse error event:", err);
+        statusRef.current = "failed";
+        setStatus("failed");
+        closeStream();
+        onErrorRef.current?.("Agent run failed");
+      }
+    };
+
+    const handleGenericEvent = (type: string) => (e: MessageEvent) => {
+      try {
+        const payload = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        setEvents((prev) => [...prev, { type, ...payload }]);
+      } catch {}
+    };
+
+    // Generic fallback for untyped SSE messages
+    es.onmessage = (e: MessageEvent) => {
+      try {
+        const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        if (data.type === "text_delta" || (data.delta && !data.status)) {
+          handleTextDelta(e);
+        } else if (data.type === "thought_delta") {
+          handleThoughtDelta(e);
+        } else if (data.type === "status_change" || data.status) {
+          handleStatusChange(e);
+        } else if (data.type === "error" || data.type === "run_error" || data.error) {
+          handleErrorEvent(e);
+        }
+      } catch {}
+    };
+
+    es.addEventListener("status_change", handleStatusChange);
+    es.addEventListener("text_delta", handleTextDelta);
+    es.addEventListener("thought_delta", handleThoughtDelta);
+    es.addEventListener("error", handleErrorEvent);
+    es.addEventListener("run_error", handleErrorEvent);
+    es.addEventListener("artifact", handleGenericEvent("artifact"));
+    es.addEventListener("receipt", handleGenericEvent("receipt"));
+    es.addEventListener("change_set", handleGenericEvent("change_set"));
+
     es.onerror = () => {
-      setIsStreaming(false);
-      es.close();
-      eventSourceRef.current = null;
+      if (eventSourceRef.current) {
+        const lastStatus = statusRef.current;
+        closeStream();
+        if (lastStatus !== "completed" && lastStatus !== "cancelled" && lastStatus !== "failed") {
+          statusRef.current = "failed";
+          setStatus("failed");
+          onErrorRef.current?.("模型请求连接异常中断或处理失败");
+        }
+      }
     };
 
     return () => {
-      es.close();
-      eventSourceRef.current = null;
+      closeStream();
     };
-  }, [runId, onCompleted, onError]);
+  }, [runId]);
 
   return {
     streamedText,

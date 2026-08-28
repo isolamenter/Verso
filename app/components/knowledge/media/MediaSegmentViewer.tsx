@@ -1,3 +1,4 @@
+import { useI18n } from "../../../i18n";
 import type { MediaSegment } from "../../../../shared/schemas/knowledge";
 
 export interface MediaSegmentViewerProps {
@@ -13,10 +14,12 @@ function formatMs(ms?: number | null): string {
 }
 
 export function MediaSegmentViewer({ segments }: MediaSegmentViewerProps) {
+  const { t } = useI18n();
+
   if (segments.length === 0) {
     return (
       <div className="text-[11px] text-ink-muted italic py-2">
-        暂无细分时间轴/页码切片
+        {t("knowledge.noSegments")}
       </div>
     );
   }
@@ -24,7 +27,7 @@ export function MediaSegmentViewer({ segments }: MediaSegmentViewerProps) {
   return (
     <div className="space-y-2 mt-2 font-serif">
       <div className="text-[11px] font-semibold text-ink-muted">
-        定位切片与多模态转录 ({segments.length})
+        {t("knowledge.segmentsCount", { count: segments.length })}
       </div>
       <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
         {segments.map((seg, idx) => {
@@ -44,7 +47,7 @@ export function MediaSegmentViewer({ segments }: MediaSegmentViewerProps) {
                 )}
                 {hasPage && (
                   <span className="bg-ink-muted/10 px-1.5 py-0.5 rounded text-ink font-medium">
-                    📄 第 {seg.pageNumber} 页
+                    {t("knowledge.pageNumber", { page: seg.pageNumber! })}
                   </span>
                 )}
                 {seg.speakers && seg.speakers.length > 0 && (
@@ -54,14 +57,14 @@ export function MediaSegmentViewer({ segments }: MediaSegmentViewerProps) {
 
               {seg.transcript && (
                 <div className="text-ink text-[11px] leading-relaxed">
-                  <span className="text-ink-muted mr-1">转录:</span>
+                  <span className="text-ink-muted mr-1">{t("knowledge.transcription")}</span>
                   {seg.transcript}
                 </div>
               )}
 
               {seg.visualDescription && (
                 <div className="text-ink-muted text-[10px] italic leading-relaxed">
-                  <span className="not-italic mr-1">画面描述:</span>
+                  <span className="not-italic mr-1">{t("knowledge.visualDescription")}</span>
                   {seg.visualDescription}
                 </div>
               )}

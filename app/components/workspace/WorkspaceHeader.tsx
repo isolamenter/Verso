@@ -3,9 +3,10 @@ import { Link, useFetcher } from "react-router";
 
 export interface WorkspaceHeaderProps {
   onOpenCreateModal: () => void;
+  onOpenImportModal?: () => void;
 }
 
-export function WorkspaceHeader({ onOpenCreateModal }: WorkspaceHeaderProps) {
+export function WorkspaceHeader({ onOpenCreateModal, onOpenImportModal }: WorkspaceHeaderProps) {
   const { t, locale, setLocale } = useI18n();
   const fetcher = useFetcher();
 
@@ -42,6 +43,16 @@ export function WorkspaceHeader({ onOpenCreateModal }: WorkspaceHeaderProps) {
           >
             {locale === "zh-CN" ? "EN / 中文" : "中文 / EN"}
           </button>
+
+          {onOpenImportModal && (
+            <button
+              onClick={onOpenImportModal}
+              className="px-3.5 py-1.5 rounded-sm border border-ink-muted/25 text-ink hover:bg-paper-light transition-colors text-xs font-serif font-medium shadow-2xs flex items-center space-x-1.5"
+            >
+              <span>📥</span>
+              <span>{t("workspace.importOriginal")}</span>
+            </button>
+          )}
 
           <button
             onClick={onOpenCreateModal}

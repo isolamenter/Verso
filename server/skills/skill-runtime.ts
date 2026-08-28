@@ -7,6 +7,8 @@ export interface SkillDiscoveryItem {
   category: string;
   description: string;
   version: string;
+  contextPolicy?: BuiltinSkillConfig["contextPolicy"];
+  supportedTools?: string[];
 }
 
 export class SkillRuntime {
@@ -20,6 +22,8 @@ export class SkillRuntime {
       category: s.category,
       description: s.description,
       version: s.version,
+      contextPolicy: s.contextPolicy,
+      supportedTools: s.supportedTools,
     }));
   }
 

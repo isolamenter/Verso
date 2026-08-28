@@ -1,9 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useFetcher } from "react-router";
+import { useI18n } from "../../i18n";
 import { WorkbenchHeader } from "./WorkbenchHeader";
 import { MaterialTabs, type MaterialTabType } from "./MaterialTabs";
 import { ManuscriptViewer } from "./ManuscriptViewer";
 import { ManuscriptEditor } from "./ManuscriptEditor";
+import { ImportSceneModal } from "./ImportSceneModal";
 import { AgentPane } from "./AgentPane";
 import { ChangesTabContent } from "../changes/ChangesTabContent";
 import { KnowledgeTabContent } from "../knowledge/KnowledgeTabContent";
@@ -23,6 +25,7 @@ export function WorkbenchShell({
   scenes,
   activeThread,
 }: WorkbenchShellProps) {
+  const { t } = useI18n();
   const fetcher = useFetcher();
 
   // Active scene selection
@@ -35,6 +38,9 @@ export function WorkbenchShell({
 
   // Manual editing mode
   const [isEditing, setIsEditing] = useState(false);
+
+  // Import modal state
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // Attached quote in Agent composer
   const [attachedQuote, setAttachedQuote] = useState<string | null>(null);
@@ -88,7 +94,7 @@ export function WorkbenchShell({
         sceneId: activeScene.id,
         content: contentJson,
         expectedBaseRevisionId: activeScene.currentRevisionId || "",
-        description: description || "手动修改",
+        description: description || t("workbench.manualEditSaveDescription"),
       },
       { method: "post" }
     );
@@ -108,6 +114,7 @@ export function WorkbenchShell({
         currentContent={activeScene?.content || ""}
         isEditing={isEditing}
         onToggleEditMode={() => setIsEditing(!isEditing)}
+        onOpenImportModal={() => setIsImportModalOpen(true)}
       />
 
       {/* Main Two-Pane Split Body */}
@@ -140,6 +147,7 @@ export function WorkbenchShell({
                     sceneTitle={activeScene?.title || ""}
                     onAttachQuoteToAgent={(quote) => setAttachedQuote(quote)}
                     onEnterManualEdit={() => setIsEditing(true)}
+                    onOpenImport={() => setIsImportModalOpen(true)}
                   />
                 )}
               </>
@@ -171,11 +179,22 @@ export function WorkbenchShell({
           <AgentPane
             projectId={project.id}
             threadId={activeThread?.id}
+            initialSkillId={activeThread?.activeSkillId || undefined}
             attachedQuote={attachedQuote}
             onClearAttachedQuote={() => setAttachedQuote(null)}
           />
         </div>
       </div>
+
+      <ImportSceneModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        projectId={project.id}
+        manuscripts={manuscripts}
+        activeScene={activeScene}
+        scenesCount={scenes.length}
+        onImportComplete={() => window.location.reload()}
+      />
     </div>
   );
 }

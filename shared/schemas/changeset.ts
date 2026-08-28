@@ -20,6 +20,7 @@ export const ChangeOperationTypeEnum = z.enum([
   "insert_text",
   "delete_text_range",
   "replace_scene",
+  "split_scene",
   "append_to_scene",
   "create_scene",
   "update_scene_metadata",

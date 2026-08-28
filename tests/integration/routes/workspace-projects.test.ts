@@ -184,6 +184,22 @@ describe("E07 — Workspace Home & Project Isolation", () => {
 
     const archived = await projectRepository.getProjectById(createdId);
     expect(archived?.archived).toBe(true);
+
+    // 4. Delete project via action
+    const deleteForm = new FormData();
+    deleteForm.append("intent", "delete_project");
+    deleteForm.append("projectId", createdId);
+
+    const deleteReq = new Request("http://127.0.0.1:4173", {
+      method: "POST",
+      body: deleteForm,
+    });
+
+    const deleteRes = await indexAction({ request: deleteReq });
+    expect(deleteRes).toEqual({ success: true });
+
+    const deleted = await projectRepository.getProjectById(createdId);
+    expect(deleted).toBeNull();
   });
 
   it("loads Workspace index data with recentProject and project list", async () => {

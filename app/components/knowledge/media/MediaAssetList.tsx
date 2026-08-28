@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useI18n } from "../../../i18n";
 import { MediaSegmentViewer } from "./MediaSegmentViewer";
 import type {
   KnowledgeAsset,
@@ -23,21 +24,22 @@ export function MediaAssetList({
   onRetry,
   onUploadClick,
 }: MediaAssetListProps) {
+  const { t } = useI18n();
   const [expandedAssetId, setExpandedAssetId] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const getStatusBadge = (status?: string) => {
     switch (status) {
       case "pending":
-        return <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-700">排队解析中</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-700">{t("knowledge.statusQueued")}</span>;
       case "processing":
-        return <span className="px-2 py-0.5 rounded text-[10px] bg-blue-500/15 text-blue-700 animate-pulse">正在提取切片...</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] bg-blue-500/15 text-blue-700 animate-pulse">{t("knowledge.statusExtracting")}</span>;
       case "completed":
-        return <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-700 font-medium">已就绪</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-700 font-medium">{t("knowledge.statusReady")}</span>;
       case "failed":
-        return <span className="px-2 py-0.5 rounded text-[10px] bg-cinnabar/15 text-cinnabar font-semibold">解析失败</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] bg-cinnabar/15 text-cinnabar font-semibold">{t("knowledge.statusFailed")}</span>;
       default:
-        return <span className="px-2 py-0.5 rounded text-[10px] bg-ink-muted/10 text-ink-muted">已导入</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] bg-ink-muted/10 text-ink-muted">{t("knowledge.statusImported")}</span>;
     }
   };
 
@@ -69,12 +71,12 @@ export function MediaAssetList({
     return (
       <div className="text-center py-10 text-ink-muted space-y-3 font-serif">
         <div className="text-3xl">📁</div>
-        <p className="text-xs">暂无多模态素材（文档、图像、原声录音、视频）</p>
+        <p className="text-xs">{t("knowledge.emptyMedia")}</p>
         <button
           onClick={onUploadClick}
           className="px-3 py-1.5 bg-ink text-paper rounded text-xs font-medium hover:bg-ink/90 shadow-xs transition-colors"
         >
-          + 上传素材文件
+          {t("knowledge.uploadMediaFile")}
         </button>
       </div>
     );
@@ -84,13 +86,13 @@ export function MediaAssetList({
     <div className="space-y-4 font-serif">
       <div className="flex items-center justify-between">
         <span className="text-xs text-ink-muted font-medium">
-          已挂载多模态资源 ({assets.length})
+          {t("knowledge.mountedMedia", { count: assets.length })}
         </span>
         <button
           onClick={onUploadClick}
           className="px-2.5 py-1 bg-ink text-paper rounded text-xs font-medium hover:bg-ink/90 shadow-xs transition-colors"
         >
-          + 上传文件
+          {t("knowledge.uploadMediaFile")}
         </button>
       </div>
 
@@ -129,14 +131,14 @@ export function MediaAssetList({
                       disabled={retryingId === asset.id}
                       className="px-2 py-1 bg-paper-light border border-ink-muted/20 rounded text-[11px] text-ink hover:text-cinnabar transition-colors"
                     >
-                      {retryingId === asset.id ? "重试中..." : "🔄 重试"}
+                      {retryingId === asset.id ? t("knowledge.retryInProgress") : t("knowledge.retryButton")}
                     </button>
                   )}
                   <button
                     onClick={() => setExpandedAssetId(isExpanded ? null : asset.id)}
                     className="px-2 py-1 border border-ink-muted/15 rounded text-[11px] text-ink-muted hover:text-ink transition-colors"
                   >
-                    {isExpanded ? "收起切片" : `查看切片 (${segments.length})`}
+                    {isExpanded ? t("knowledge.collapseSegments") : t("knowledge.viewSegments", { count: segments.length })}
                   </button>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useI18n } from "../../i18n";
 import { KnowledgeNodeCard } from "./KnowledgeNodeCard";
 import { CreateKnowledgeModal } from "./CreateKnowledgeModal";
 import { MediaAssetList, type MediaAssetDetail } from "./media/MediaAssetList";
@@ -9,18 +10,20 @@ export interface KnowledgeTabContentProps {
   projectId: string;
 }
 
-const CATEGORIES: Array<{ key: string; label: string }> = [
-  { key: "all", label: "全部素材" },
-  { key: "character", label: "人物角色" },
-  { key: "world_rule", label: "世界法则" },
-  { key: "location", label: "地点背景" },
-  { key: "theme", label: "主题意象" },
-  { key: "timeline", label: "时间线" },
-  { key: "media", label: "多模态资源" },
-  { key: "custom", label: "其他" },
-];
-
 export function KnowledgeTabContent({ projectId }: KnowledgeTabContentProps) {
+  const { t } = useI18n();
+
+  const categories: Array<{ key: string; label: string }> = [
+    { key: "all", label: t("knowledge.catAll") },
+    { key: "character", label: t("knowledge.catCharacter") },
+    { key: "world_rule", label: t("knowledge.catWorldRule") },
+    { key: "location", label: t("knowledge.catLocation") },
+    { key: "theme", label: t("knowledge.catTheme") },
+    { key: "timeline", label: t("knowledge.catTimeline") },
+    { key: "media", label: t("knowledge.catMedia") },
+    { key: "custom", label: t("knowledge.catCustom") },
+  ];
+
   const [nodes, setNodes] = useState<KnowledgeNode[]>([]);
   const [assets, setAssets] = useState<MediaAssetDetail[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -133,7 +136,7 @@ export function KnowledgeTabContent({ projectId }: KnowledgeTabContentProps) {
   if (isLoading) {
     return (
       <div className="flex-1 p-8 text-center text-xs text-ink-muted font-serif animate-pulse">
-        正在加载设定与素材库...
+        {t("knowledge.loadingKnowledge")}
       </div>
     );
   }
@@ -143,7 +146,7 @@ export function KnowledgeTabContent({ projectId }: KnowledgeTabContentProps) {
       {/* Top Header & Categories */}
       <div className="p-4 border-b border-ink-muted/15 flex flex-wrap items-center justify-between gap-3 shrink-0 bg-paper/95 text-xs">
         <div className="flex items-center space-x-1.5 overflow-x-auto pb-1">
-          {CATEGORIES.map((cat) => {
+          {categories.map((cat) => {
             let count = 0;
             if (cat.key === "all") count = nodes.length;
             else if (cat.key === "media") count = assets.length;
@@ -170,7 +173,7 @@ export function KnowledgeTabContent({ projectId }: KnowledgeTabContentProps) {
             onClick={() => setIsUploadModalOpen(true)}
             className="px-3 py-1.5 bg-paper-light border border-ink-muted/25 rounded text-xs font-medium text-ink hover:bg-paper shadow-2xs transition-colors"
           >
-            + 上传素材文件
+            {t("knowledge.uploadMediaFile")}
           </button>
           <button
             onClick={() => {
@@ -179,7 +182,7 @@ export function KnowledgeTabContent({ projectId }: KnowledgeTabContentProps) {
             }}
             className="px-3 py-1.5 bg-ink text-paper rounded text-xs font-medium hover:bg-ink/90 shadow-xs transition-colors"
           >
-            + 新增设定条目
+            {t("knowledge.addKnowledgeNode")}
           </button>
         </div>
       </div>
@@ -196,7 +199,7 @@ export function KnowledgeTabContent({ projectId }: KnowledgeTabContentProps) {
           <div className="text-center py-12 text-ink-muted space-y-2">
             <div className="text-2xl">📚</div>
             <p className="text-xs">
-              {activeCategory === "all" ? "素材库暂无条目" : "该类别下暂无素材条目"}
+              {activeCategory === "all" ? t("knowledge.emptyLibrary") : t("knowledge.emptyCategory")}
             </p>
           </div>
         ) : (

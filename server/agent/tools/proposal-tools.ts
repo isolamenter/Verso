@@ -1,5 +1,7 @@
-import { changeSetService } from "../../domain";
+import { changeSetService, projectRepository, manuscriptService } from "../../domain";
 import type { ToolExecutionContext } from "./read-tools";
+import { splitManuscriptTextByAnchors, computeSplitCoverage } from "../../../shared/manuscript";
+import type { ProposeSceneSplitsInput } from "../../../shared/schemas/tools";
 
 export interface ProposeTextChangeInput {
   changeSetTitle?: string;
@@ -169,6 +171,101 @@ export class ProposalToolsEngine {
       success: true,
       changeSetId: result.changeSet.id,
       status: result.changeSet.status,
+    };
+  }
+
+  /**
+   * 5. propose_scene_splits
+   */
+  public async proposeSceneSplits(input: ProposeSceneSplitsInput, ctx: ToolExecutionContext) {
+    // 1. Resolve target scene
+    let targetSceneId = input.sceneId;
+    if (!targetSceneId && input.manuscriptId) {
+      const scenes = await projectRepository.listScenesByManuscript(input.manuscriptId);
+      targetSceneId = scenes[0]?.id;
+    }
+    if (!targetSceneId) {
+      const allScenes = await projectRepository.listScenesByProject(ctx.projectId);
+      targetSceneId = allScenes[0]?.id;
+    }
+
+    if (!targetSceneId) {
+      throw new Error(`No target scene found to split in project ${ctx.projectId}`);
+    }
+
+    const scene = await manuscriptService.getSceneById(targetSceneId, ctx.projectId);
+    if (!scene) {
+      throw new Error(`Target scene not found: ${targetSceneId}`);
+    }
+
+    const sourceText = scene.content;
+    const splitResults = splitManuscriptTextByAnchors(sourceText, input.splits);
+    const coverage = computeSplitCoverage(sourceText, splitResults);
+
+    // Detect any splits that could not be matched by startQuote anchors
+    const matchedTitles = new Set(splitResults.map((s) => s.title));
+    const unmatchedSplits = input.splits
+      .filter((s) => !matchedTitles.has(s.title))
+      .map((s) => ({ title: s.title, startQuote: s.startQuote }));
+
+    if (unmatchedSplits.length > 0) {
+      console.warn(
+        `[ProposalTools] ${unmatchedSplits.length} split(s) failed to match anchors in scene ${scene.id}:`,
+        unmatchedSplits
+      );
+    }
+
+    const changeSetTitle = input.changeSetTitle || `分场规划方案：${splitResults.length} 场`;
+    const changeSetObjective =
+      input.changeSetObjective ||
+      `将《${scene.title}》细化拆分为 ${splitResults.length} 个独立场景/章节`;
+
+    const result = await changeSetService.createChangeSetWithOperations(
+      {
+        projectId: ctx.projectId,
+        threadId: ctx.threadId,
+        runId: ctx.runId,
+        title: changeSetTitle,
+        objective: changeSetObjective,
+        rationale: input.rationale,
+      },
+      [
+        {
+          targetType: "scene",
+          targetId: scene.id,
+          baseRevisionId: scene.currentRevisionId || undefined,
+          operationType: "split_scene",
+          quote: splitResults[0]?.startQuote || "",
+          replacementContent: JSON.stringify(splitResults),
+          literaryTradeoff: input.rationale,
+          structuredPayload: {
+            coverage,
+            sceneCount: splitResults.length,
+            splits: splitResults,
+            unmatchedSplits: unmatchedSplits.length > 0 ? unmatchedSplits : undefined,
+            originalSceneTitle: scene.title,
+            manuscriptId: scene.manuscriptId,
+          },
+        },
+      ]
+    );
+
+    return {
+      success: true,
+      changeSetId: result.changeSet.id,
+      status: result.changeSet.status,
+      coverage,
+      sceneCount: splitResults.length,
+      unmatchedSplits: unmatchedSplits.length > 0 ? unmatchedSplits : undefined,
+      splits: splitResults.map((s) => ({
+        title: s.title,
+        summary: s.summary,
+        characterCount: s.characterCount,
+        startQuote: s.startQuote,
+        range: s.range,
+        pov: s.pov,
+        timeframe: s.timeframe,
+      })),
     };
   }
 }

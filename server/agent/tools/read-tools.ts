@@ -76,7 +76,8 @@ export class ReadToolsEngine {
    */
   public async readResource(input: ReadResourceInput, ctx: ToolExecutionContext) {
     const { type, id } = input;
-    const maxLen = input.maxLength ?? 20000;
+    const offset = input.offset ?? 0;
+    const maxLen = input.maxLength ?? 100000;
 
     if (type === "scene") {
       const scene = await manuscriptService.getSceneById(id, ctx.projectId);
@@ -85,12 +86,15 @@ export class ReadToolsEngine {
       }
 
       const plain = extractPlainText(scene.content);
-      const truncated = plain.slice(0, maxLen);
+      const sliceStart = Math.min(Math.max(0, offset), plain.length);
+      const sliceEnd = Math.min(sliceStart + maxLen, plain.length);
+      const truncated = plain.slice(sliceStart, sliceEnd);
+      const isTruncated = sliceEnd < plain.length || sliceStart > 0;
 
       ctx.receiptBuilder?.recordItem({
         resourceType: "scene",
         resourceId: id,
-        inclusionMode: truncated.length < plain.length ? "excerpt" : "full",
+        inclusionMode: isTruncated ? "excerpt" : "full",
         revisionId: scene.currentRevisionId || undefined,
         excerptLength: truncated.length,
         reason: "Read by agent tool",
@@ -101,8 +105,9 @@ export class ReadToolsEngine {
         type: "scene",
         title: scene.title,
         content: truncated,
+        offset: sliceStart,
         characterCount: plain.length,
-        isTruncated: truncated.length < plain.length,
+        isTruncated,
       };
     }
 
@@ -117,12 +122,15 @@ export class ReadToolsEngine {
       }
 
       const plain = extractPlainText(node.content);
-      const truncated = plain.slice(0, maxLen);
+      const sliceStart = Math.min(Math.max(0, offset), plain.length);
+      const sliceEnd = Math.min(sliceStart + maxLen, plain.length);
+      const truncated = plain.slice(sliceStart, sliceEnd);
+      const isTruncated = sliceEnd < plain.length || sliceStart > 0;
 
       ctx.receiptBuilder?.recordItem({
         resourceType: "knowledge_node",
         resourceId: id,
-        inclusionMode: truncated.length < plain.length ? "excerpt" : "full",
+        inclusionMode: isTruncated ? "excerpt" : "full",
         excerptLength: truncated.length,
       });
 
@@ -132,6 +140,9 @@ export class ReadToolsEngine {
         title: node.title,
         kind: node.kind,
         content: truncated,
+        offset: sliceStart,
+        characterCount: plain.length,
+        isTruncated,
       };
     }
 

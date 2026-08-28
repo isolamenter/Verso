@@ -116,7 +116,7 @@ export function ChangesTabContent({
   if (isLoading) {
     return (
       <div className="flex-1 p-8 text-center text-xs text-ink-muted font-serif animate-pulse">
-        正在加载修改提案...
+        {t("changes.loadingChanges")}
       </div>
     );
   }
@@ -134,7 +134,7 @@ export function ChangesTabContent({
                 : "text-ink-muted hover:text-ink bg-paper-light"
             }`}
           >
-            待评审 ({openItems.length})
+            {t("changes.pendingReview", { count: openItems.length })}
           </button>
           <button
             onClick={() => setActiveFilter("all")}
@@ -144,14 +144,14 @@ export function ChangesTabContent({
                 : "text-ink-muted hover:text-ink bg-paper-light"
             }`}
           >
-            全部历史 ({items.length})
+            {t("changes.allHistory", { count: items.length })}
           </button>
         </div>
 
         <button
           onClick={loadChangeSets}
           className="text-ink-muted hover:text-ink text-xs p-1"
-          title="刷新"
+          title={t("common.refresh")}
         >
           🔄
         </button>
@@ -163,7 +163,7 @@ export function ChangesTabContent({
           <div className="text-center py-12 text-ink-muted space-y-2">
             <div className="text-2xl">📋</div>
             <p className="text-xs">
-              {activeFilter === "open" ? t("changes.noPendingChanges") : "暂无任何修改记录"}
+              {activeFilter === "open" ? t("changes.noPendingChanges") : t("changes.noHistory")}
             </p>
           </div>
         ) : (

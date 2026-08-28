@@ -30,10 +30,23 @@ export async function action({
   const formData = await request.formData();
   const prompt = formData.get("prompt") as string;
   const attachedQuote = (formData.get("attachedQuote") as string) || undefined;
-  const skillId = (formData.get("skillId") as string) || undefined;
+  const rawSkillId = formData.get("skillId");
+  let skillId: string | undefined = undefined;
+  if (typeof rawSkillId === "string" && rawSkillId.trim() && rawSkillId !== "default") {
+    skillId = rawSkillId.trim();
+  }
 
   if (!prompt && !attachedQuote) {
     return { error: "Prompt or attachedQuote required" };
+  }
+
+  // Persist active skill on thread for lineage consistency
+  try {
+    await agentRepository.updateThread(threadId, {
+      activeSkillId: skillId || null,
+    });
+  } catch (err) {
+    console.warn(`[MessagesAction] Failed to update thread activeSkillId:`, err);
   }
 
   const result = await agentRuntime.startRun({

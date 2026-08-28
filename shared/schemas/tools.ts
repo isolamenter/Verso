@@ -21,7 +21,8 @@ export type ResourceSummaryItem = z.infer<typeof ResourceSummaryItemSchema>;
 export const ReadResourceInputSchema = z.object({
   type: z.enum(["scene", "knowledge", "memory", "manuscript"]),
   id: IdSchema,
-  maxLength: z.number().int().positive().max(50000).optional(),
+  offset: z.number().int().min(0).optional(),
+  maxLength: z.number().int().positive().max(1000000).optional(),
 });
 export type ReadResourceInput = z.infer<typeof ReadResourceInputSchema>;
 
@@ -93,4 +94,24 @@ export const QueryMemoryInputSchema = z.object({
   limit: z.number().int().min(1).max(20).default(10),
 });
 export type QueryMemoryInput = z.infer<typeof QueryMemoryInputSchema>;
+
+// 10. propose_scene_splits
+export const SceneSplitPlanItemSchema = z.object({
+  title: z.string().min(1),
+  summary: z.string().optional(),
+  startQuote: z.string().min(4),
+  pov: z.string().optional(),
+  timeframe: z.string().optional(),
+});
+export type SceneSplitPlanItem = z.infer<typeof SceneSplitPlanItemSchema>;
+
+export const ProposeSceneSplitsInputSchema = z.object({
+  changeSetTitle: z.string().optional(),
+  changeSetObjective: z.string().optional(),
+  sceneId: IdSchema.optional(),
+  manuscriptId: IdSchema.optional(),
+  splits: z.array(SceneSplitPlanItemSchema).min(2),
+  rationale: z.string().optional(),
+});
+export type ProposeSceneSplitsInput = z.infer<typeof ProposeSceneSplitsInputSchema>;
 

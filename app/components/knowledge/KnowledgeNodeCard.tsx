@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useI18n } from "../../i18n";
 import type { KnowledgeNode } from "../../../shared/schemas/knowledge";
 
 export interface KnowledgeNodeCardProps {
@@ -12,17 +13,18 @@ export function KnowledgeNodeCard({
   onEdit,
   onArchive,
 }: KnowledgeNodeCardProps) {
+  const { t } = useI18n();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
 
   const getAuthorityBadge = (auth: string) => {
     switch (auth) {
       case "user_authored_locked":
-        return <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-800 font-medium">作者权威定义</span>;
+        return <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-800 font-medium">{t("knowledge.authAuthoritative")}</span>;
       case "user_curated_editable":
-        return <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/15 text-blue-700 font-medium">已人工核定</span>;
+        return <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/15 text-blue-700 font-medium">{t("knowledge.authVerified")}</span>;
       case "agent_derived":
-        return <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/15 text-purple-700 font-medium">AI 提取推荐</span>;
+        return <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/15 text-purple-700 font-medium">{t("knowledge.authExtracted")}</span>;
       default:
         return <span className="px-1.5 py-0.5 rounded text-[10px] bg-ink-muted/10 text-ink-muted">{auth}</span>;
     }
@@ -30,19 +32,19 @@ export function KnowledgeNodeCard({
 
   const getKindLabel = (kind: string) => {
     const map: Record<string, string> = {
-      character: "人物",
-      world_rule: "世界法则",
-      location: "地点",
-      theme: "主题",
-      timeline: "时间线",
-      motif: "母题",
-      custom: "其他",
+      character: t("knowledge.catCharacter"),
+      world_rule: t("knowledge.catWorldRule"),
+      location: t("knowledge.catLocation"),
+      theme: t("knowledge.catTheme"),
+      timeline: t("knowledge.catTimeline"),
+      motif: t("knowledge.catMotif"),
+      custom: t("knowledge.catCustom"),
     };
     return map[kind] || kind;
   };
 
   const handleArchive = async () => {
-    const confirm = window.confirm(`确定要归档设定条目 "${node.title}" 吗？`);
+    const confirm = window.confirm(t("knowledge.archiveConfirm", { title: node.title }));
     if (!confirm) return;
 
     setIsArchiving(true);
@@ -76,7 +78,7 @@ export function KnowledgeNodeCard({
           <button
             onClick={() => onEdit(node)}
             className="p-1 rounded text-ink-muted hover:text-ink text-xs transition-colors"
-            title="编辑"
+            title={t("common.edit")}
           >
             ✏️
           </button>
@@ -84,7 +86,7 @@ export function KnowledgeNodeCard({
             onClick={handleArchive}
             disabled={isArchiving}
             className="p-1 rounded text-ink-muted hover:text-cinnabar text-xs transition-colors"
-            title="归档"
+            title={t("common.archived")}
           >
             🗑
           </button>
@@ -106,7 +108,7 @@ export function KnowledgeNodeCard({
               onClick={() => setIsExpanded(!isExpanded)}
               className="text-[11px] text-cinnabar hover:underline mt-1 block select-none"
             >
-              {isExpanded ? "收起全文" : "展开全文"}
+              {isExpanded ? t("knowledge.collapseAll") : t("knowledge.expandAll")}
             </button>
           )}
         </div>

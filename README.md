@@ -1,4 +1,4 @@
-# Verso — AI Literary Editorial Studio & Craft Workbench (v1.0)
+# Verso — AI Literary Editorial Studio & Craft Workbench (v1.1)
 
 <div align="center">
 
@@ -66,10 +66,13 @@ Unlike commercial AI ghostwriters or boilerplate web-novel generators, Verso adh
 
 ## 🛠️ Key Capabilities
 
-* **Two-Pane Workspace**: Seamlessly inspect and read manuscripts in read-only mode, or switch into manual editing mode with zero distraction.
-* **Persistent Agent Thread & Context Receipts**: Consult with a dedicated literary editor that remembers character notes, world rules, and past critiques with exact token budgets and context citations.
-* **Non-Destructive Change Sets**: AI proposals appear as reviewable change sets with prefix/suffix context anchors, allowing atomic acceptance, rejection, or manual fine-tuning without losing formatting.
-* **Hierarchical Knowledge Lineage**: Organize characters, motifs, world-building notes, and uploaded source materials with vector-enabled semantic retrieval.
+* **Two-Pane Workspace**: Seamlessly inspect and read manuscripts in read-only mode, or switch into manual editing mode with zero distraction. Includes a TipTap-powered editor with find-and-replace, rich formatting (headings, blockquotes, bold/italic), undo/redo, and live character/reading-time statistics.
+* **Manuscript Import — Workspace & Scene Level**: Create a project directly from an existing manuscript (`.docx` / `.txt` / `.md`) with browser-side parsing via `mammoth` + HTML sanitization, or import into the workbench as a new scene or replacement for the current scene. Supports drag-and-drop, paste-from-clipboard, and automatic title/word-count extraction. Legacy `.doc` is rejected with a guided upgrade hint.
+* **AI Scene / Chapter Splitting (Anchor-Based, Lossless)**: The Agent can be asked to restructure a long manuscript into multiple scenes or chapters via the `propose_scene_splits` tool. Instead of echoing full text, it returns a `split_scene` Change Set containing only per-scene `startQuote` anchors (15–30 chars), titles, summaries, and optional POV/timeframe. Server-side `splitManuscriptTextByAnchors` resolves anchors monotonically with exact → fuzzy → prefix fallback, validates full coverage (`computeSplitCoverage`), and on approval atomically rewrites the target scene plus inserts sibling scenes with correct ordering and revision history.
+* **Skill-Aware Agent Workbench**: The Agent runtime now exposes a declared tool bus (`propose_scene_splits`, `propose_text_change`, `list_resources`, `read_resource` with `offset`/`maxLength` pagination for long novels) and runs a multi-turn loop (up to 3 turns). A selectable Skill lens (`SkillSelector`) assembles a skill-specific system prompt and filters the active tool set; skills declare `contextPolicy` (knowledge/memory inclusion) and `supportedTools`. Events are broadcast immediately over SSE with a monotonic `sequenceNumber` for zero-delay streaming.
+* **Persistent Agent Thread & Context Receipts**: Consult with a dedicated literary editor that remembers character notes, world rules, and past critiques with exact token budgets and context citations. Includes thought-stream deltas, tool-call/tool-result transparency, and per-resource read receipts.
+* **Non-Destructive Change Sets**: AI proposals appear as reviewable change sets with prefix/suffix context anchors (now also `split_scene` with coverage and per-scene ranges), allowing atomic acceptance, rejection, or manual fine-tuning without losing formatting. Diff viewer supports both side-by-side and inline modes.
+* **Hierarchical Knowledge Lineage**: Organize characters, motifs, world-building notes, and uploaded source materials with vector-enabled semantic retrieval. Category and authority filters, paginated knowledge cards, and segment viewers for media assets.
 * **Multimedia Ingestion**: Upload research materials (`.docx`, `.txt`, `.mp3`, `.mp4`) automatically queued and ingested by background workers.
 * **Taste Profile & Evidence-Backed Memory**: The system builds and refines an understanding of the author's aesthetic voice and stylistic rules through concrete textual evidence.
 

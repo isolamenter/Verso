@@ -37,19 +37,19 @@ export function ChangeSetCard({
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "proposed":
-        return <span className="px-2 py-0.5 rounded text-[11px] bg-amber-500/15 text-amber-700 font-medium">待评审</span>;
+        return <span className="px-2 py-0.5 rounded text-[11px] bg-amber-500/15 text-amber-700 font-medium">{t("changes.statusProposed")}</span>;
       case "approved":
-        return <span className="px-2 py-0.5 rounded text-[11px] bg-blue-500/15 text-blue-700 font-medium">已批准</span>;
+        return <span className="px-2 py-0.5 rounded text-[11px] bg-blue-500/15 text-blue-700 font-medium">{t("changes.statusApproved")}</span>;
       case "partially_approved":
-        return <span className="px-2 py-0.5 rounded text-[11px] bg-purple-500/15 text-purple-700 font-medium">部分采纳</span>;
+        return <span className="px-2 py-0.5 rounded text-[11px] bg-purple-500/15 text-purple-700 font-medium">{t("changes.statusPartiallyApplied")}</span>;
       case "applied":
-        return <span className="px-2 py-0.5 rounded text-[11px] bg-emerald-500/15 text-emerald-700 font-medium">已采纳</span>;
+        return <span className="px-2 py-0.5 rounded text-[11px] bg-emerald-500/15 text-emerald-700 font-medium">{t("changes.statusApplied")}</span>;
       case "needs_rebase":
-        return <span className="px-2 py-0.5 rounded text-[11px] bg-cinnabar/15 text-cinnabar font-medium">需要校准 (冲突/过期)</span>;
+        return <span className="px-2 py-0.5 rounded text-[11px] bg-cinnabar/15 text-cinnabar font-medium">{t("changes.statusNeedsRebase")}</span>;
       case "rejected":
-        return <span className="px-2 py-0.5 rounded text-[11px] bg-ink-muted/15 text-ink-muted font-medium">已放弃</span>;
+        return <span className="px-2 py-0.5 rounded text-[11px] bg-ink-muted/15 text-ink-muted font-medium">{t("changes.statusRejected")}</span>;
       case "failed":
-        return <span className="px-2 py-0.5 rounded text-[11px] bg-cinnabar/20 text-cinnabar font-bold">采纳失败</span>;
+        return <span className="px-2 py-0.5 rounded text-[11px] bg-cinnabar/20 text-cinnabar font-bold">{t("changes.statusFailed")}</span>;
       default:
         return <span className="px-2 py-0.5 rounded text-[11px] bg-ink-muted/10 text-ink-muted">{status}</span>;
     }
@@ -104,7 +104,7 @@ export function ChangeSetCard({
       {/* Literary Tradeoff / Rationale */}
       {changeSet.rationale && (
         <div className="p-3 bg-paper-light border-l-2 border-l-cinnabar text-xs text-ink-muted rounded-r">
-          <span className="font-semibold text-ink block mb-0.5">💡 推敲得失分析:</span>
+          <span className="font-semibold text-ink block mb-0.5">{t("changes.tradeoffAnalysis")}</span>
           <p className="italic leading-relaxed">{changeSet.rationale}</p>
         </div>
       )}
@@ -112,7 +112,7 @@ export function ChangeSetCard({
       {/* Operation Items */}
       <div className="space-y-3">
         <div className="text-[11px] font-medium text-ink-muted uppercase tracking-wider">
-          包含修改项 ({operations.length})
+          {t("changes.operationsCount", { count: operations.length })}
         </div>
 
         {operations.map((op, idx) => (
@@ -128,26 +128,78 @@ export function ChangeSetCard({
                   />
                 )}
                 <span className="font-medium text-ink">
-                  #{idx + 1} {op.targetType === "scene" ? "场景正文" : "设定知识"}
+                  #{idx + 1}{" "}
+                  {op.operationType === "split_scene"
+                    ? t("changes.targetSplit")
+                    : op.targetType === "scene"
+                    ? t("changes.targetScene")
+                    : t("changes.targetKnowledge")}
                 </span>
                 {op.status === "conflict" && (
-                  <span className="text-[10px] text-cinnabar font-semibold">⚠️ 存在冲突</span>
+                  <span className="text-[10px] text-cinnabar font-semibold">{t("changes.hasConflict")}</span>
                 )}
               </div>
             </div>
 
-            {/* Diff content */}
-            <DiffViewer
-              originalText={op.quote}
-              replacementText={op.replacementContent}
-              prefixAnchor={op.prefixAnchor}
-              suffixAnchor={op.suffixAnchor}
-            />
+            {/* Content: Scene Split Preview vs Standard Diff */}
+            {op.operationType === "split_scene" ? (
+              <div className="space-y-2 text-xs font-serif">
+                <div className="flex items-center justify-between bg-paper-light px-3 py-1.5 rounded border border-ink-muted/15">
+                  <span className="font-medium text-ink">
+                    {t("changes.splitSceneCount", {
+                      count:
+                        (op.structuredPayload as any)?.sceneCount ||
+                        (op.structuredPayload as any)?.splits?.length ||
+                        0,
+                    })}
+                  </span>
+                  <span className="text-[11px] text-emerald-700 bg-emerald-500/10 px-2 py-0.5 rounded font-mono font-medium">
+                    {t("changes.splitCoverage", {
+                      pct: Math.round(((op.structuredPayload as any)?.coverage ?? 1) * 100),
+                    })}
+                  </span>
+                </div>
+                <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                  {Array.isArray((op.structuredPayload as any)?.splits) &&
+                    (op.structuredPayload as any).splits.map((sp: any, spIdx: number) => (
+                      <div key={spIdx} className="p-2 bg-paper-light/70 border border-ink-muted/10 rounded space-y-1">
+                        <div className="flex items-center justify-between text-ink">
+                          <span className="font-semibold text-xs">
+                            {spIdx + 1}. {sp.title}
+                          </span>
+                          {sp.characterCount !== undefined && (
+                            <span className="text-[10px] text-ink-muted font-mono">
+                              约 {sp.characterCount} 字
+                            </span>
+                          )}
+                        </div>
+                        {sp.summary && (
+                          <p className="text-[11px] text-ink-muted leading-relaxed">
+                            {sp.summary}
+                          </p>
+                        )}
+                        {sp.startQuote && (
+                          <div className="text-[10px] text-ink-muted/70 italic truncate">
+                            {t("changes.startQuoteAnchor")}：「{sp.startQuote}」
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ) : (
+              <DiffViewer
+                originalText={op.quote}
+                replacementText={op.replacementContent}
+                prefixAnchor={op.prefixAnchor}
+                suffixAnchor={op.suffixAnchor}
+              />
+            )}
 
             {/* Conflict reason if any */}
             {op.status === "conflict" && op.validationResult && (
               <div className="text-[11px] text-cinnabar italic bg-cinnabar/5 p-1.5 rounded">
-                冲突原因: {(op.validationResult as Record<string, any>).error || "正文已有改动，锚点无法匹配"}
+                {t("changes.conflictReason", { reason: (op.validationResult as Record<string, any>).error || t("changes.conflictDefault") })}
               </div>
             )}
           </div>
@@ -164,7 +216,7 @@ export function ChangeSetCard({
                 disabled={isProcessing}
                 className="px-3 py-1.5 bg-paper-light border border-ink-muted/25 rounded text-xs text-ink hover:bg-paper font-medium transition-colors"
               >
-                🔄 重新校准
+                {t("changes.rebase")}
               </button>
             )}
             <button
@@ -172,7 +224,7 @@ export function ChangeSetCard({
               disabled={isProcessing}
               className="px-3 py-1.5 border border-ink-muted/20 rounded text-xs text-ink-muted hover:text-ink transition-colors"
             >
-              放弃提案
+              {t("changes.rejectProposal")}
             </button>
           </div>
 
@@ -184,8 +236,8 @@ export function ChangeSetCard({
             {isProcessing
               ? t("common.saving")
               : selectedOpIds.length === operations.length
-              ? "一键采纳全部"
-              : `采纳所选项 (${selectedOpIds.length})`}
+              ? t("changes.applyAll")
+              : t("changes.applySelected", { count: selectedOpIds.length })}
           </button>
         </div>
       )}
