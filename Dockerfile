@@ -21,6 +21,7 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/build ./build
 COPY --from=build /app/server ./server
+COPY --from=build /app/shared ./shared
 COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/react-router.config.ts ./react-router.config.ts

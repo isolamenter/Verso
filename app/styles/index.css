@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "./styles/typography.css";
+@import "./typography.css";
 
 /* Class-based dark mode — the "ink" paper theme adds `.dark` on the app root. */
 @custom-variant dark (&:where(.dark, .dark *));

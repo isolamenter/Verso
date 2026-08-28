@@ -23,6 +23,8 @@ services:
       dockerfile: Dockerfile
     container_name: verso_web
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       VERSO_DATABASE_URL: postgres://verso:verso_dev_secret@postgres:5432/verso
       VERSO_DATA_DIR: /data
@@ -45,6 +47,8 @@ services:
     container_name: verso_worker
     restart: unless-stopped
     command: ["npm", "run", "worker"]
+    env_file:
+      - .env
     environment:
       VERSO_DATABASE_URL: postgres://verso:verso_dev_secret@postgres:5432/verso
       VERSO_DATA_DIR: /data

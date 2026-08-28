@@ -12,7 +12,6 @@ export * from "./knowledge/knowledge-service";
 export * from "./knowledge/media/asset-service";
 export * from "./retrieval/hierarchical-retriever";
 export * from "./memory/memory-service";
-export * from "./import/legacy-import-service";
 
 import { ProjectRepository } from "./project-repository";
 import { AgentRepository } from "./agent-repository";
@@ -26,7 +25,6 @@ import { KnowledgeService, knowledgeService } from "./knowledge/knowledge-servic
 import { AssetService, assetService } from "./knowledge/media/asset-service";
 import { HierarchicalRetriever, hierarchicalRetriever } from "./retrieval/hierarchical-retriever";
 import { MemoryService, memoryService } from "./memory/memory-service";
-import { LegacyImportService, legacyImportService } from "./import/legacy-import-service";
 
 export const projectRepository = new ProjectRepository();
 export const agentRepository = new AgentRepository();
@@ -40,5 +38,4 @@ export { knowledgeService, KnowledgeService };
 export { assetService, AssetService };
 export { hierarchicalRetriever, HierarchicalRetriever };
 export { memoryService, MemoryService };
-export { legacyImportService, LegacyImportService };
 

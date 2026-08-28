@@ -9,7 +9,7 @@ import {
 } from "react-router";
 import type { Route } from "./+types/root";
 import { getLocaleFromRequest, I18nProvider, type Locale } from "./i18n";
-import "../src/index.css";
+import "./styles/index.css";
 
 export async function loader({ request }: { request: Request }) {
   const locale = getLocaleFromRequest(request);

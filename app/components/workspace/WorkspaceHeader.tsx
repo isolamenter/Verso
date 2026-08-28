@@ -43,13 +43,6 @@ export function WorkspaceHeader({ onOpenCreateModal }: WorkspaceHeaderProps) {
             {locale === "zh-CN" ? "EN / 中文" : "中文 / EN"}
           </button>
 
-          <Link
-            to="/legacy"
-            className="px-3 py-1.5 rounded-sm text-ink-muted hover:text-ink transition-colors text-xs font-serif hidden md:inline-block"
-          >
-            {t("workspace.importLegacy")}
-          </Link>
-
           <button
             onClick={onOpenCreateModal}
             className="px-4 py-1.5 rounded-sm bg-ink text-paper hover:bg-ink/90 transition-colors text-xs font-serif font-medium shadow-sm flex items-center space-x-1.5"

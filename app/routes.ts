@@ -3,9 +3,6 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 export default [
   index("routes/_index.tsx"),
   route("projects/:projectId", "routes/projects.$projectId.tsx"),
-  route("legacy", "routes/legacy.tsx"),
-  route("migrate", "routes/migrate.tsx"),
-  route("api/import/legacy", "routes/api.import.legacy.ts"),
   route("api/runs/:runId/events", "routes/api.runs.$runId.events.ts"),
   route("api/runs/:runId/cancel", "routes/api.runs.$runId.cancel.ts"),
   route("api/projects/:projectId/threads/:threadId/messages", "routes/api.projects.$projectId.threads.$threadId.messages.ts"),

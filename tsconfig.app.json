@@ -23,5 +23,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "app", ".react-router/types/**/*"]
+  "include": ["app", "shared", ".react-router/types/**/*"]
 }
