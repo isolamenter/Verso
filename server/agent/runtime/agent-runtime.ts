@@ -1,10 +1,17 @@
-import { agentRepository } from "../../domain";
+import { agentRepository, projectRepository } from "../../domain";
 import { reasoningModel } from "../../models";
 import { runEventBus } from "./run-event-bus";
 import { proposalToolsEngine } from "../tools/proposal-tools";
-import { readToolsEngine, type ToolExecutionContext } from "../tools/read-tools";
+import {
+  readToolsEngine,
+  type ToolExecutionContext,
+} from "../tools/read-tools";
 import { skillRuntime } from "../../skills/skill-runtime";
-import type { AgentRun, AgentRunEvent, AgentRunEventType } from "../../../shared/schemas/agent";
+import type {
+  AgentRun,
+  AgentRunEvent,
+  AgentRunEventType,
+} from "../../../shared/schemas/agent";
 import type { ModelMessage } from "../../../shared/schemas/model-capabilities";
 
 export const AGENT_TOOLS = [
@@ -17,20 +24,36 @@ export const AGENT_TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          changeSetTitle: { type: "string", description: "切分提案标题，如'前三章分场重组方案'" },
-          changeSetObjective: { type: "string", description: "切分目的与核心依据" },
-          sceneId: { type: "string", description: "需要切分的目标场景ID（可选，默认为当前主场景）" },
+          changeSetTitle: {
+            type: "string",
+            description: "切分提案标题，如'前三章分场重组方案'",
+          },
+          changeSetObjective: {
+            type: "string",
+            description: "切分目的与核心依据",
+          },
+          sceneId: {
+            type: "string",
+            description: "需要切分的目标场景ID（可选，默认为当前主场景）",
+          },
           splits: {
             type: "array",
             description: "分场规划清单（至少2场，全量覆盖全文）",
             items: {
               type: "object",
               properties: {
-                title: { type: "string", description: "该场标题，如'第一场：破晓时分'" },
-                summary: { type: "string", description: "该场一句话剧情事件与戏剧张力" },
+                title: {
+                  type: "string",
+                  description: "该场标题，如'第一场：破晓时分'",
+                },
+                summary: {
+                  type: "string",
+                  description: "该场一句话剧情事件与戏剧张力",
+                },
                 startQuote: {
                   type: "string",
-                  description: "该场在原文分界线处的起始句锚点（15~30字原文，必须与原文逐字完全一致）",
+                  description:
+                    "该场在原文分界线处的起始句锚点（15~30字原文，必须与原文逐字完全一致）",
                 },
                 pov: { type: "string", description: "视点人物（可选）" },
                 timeframe: { type: "string", description: "时间跨度（可选）" },
@@ -38,7 +61,10 @@ export const AGENT_TOOLS = [
               required: ["title", "startQuote"],
             },
           },
-          rationale: { type: "string", description: "文学取舍与节奏分断考量说明" },
+          rationale: {
+            type: "string",
+            description: "文学取舍与节奏分断考量说明",
+          },
         },
         required: ["splits"],
       },
@@ -67,11 +93,15 @@ export const AGENT_TOOLS = [
     type: "function" as const,
     function: {
       name: "list_resources",
-      description: "列出当前作品的所有场景(scene)、设定(knowledge)与记忆(memory)。",
+      description:
+        "列出当前作品的所有场景(scene)、设定(knowledge)与记忆(memory)。",
       parameters: {
         type: "object",
         properties: {
-          type: { type: "string", enum: ["all", "scene", "knowledge", "memory"] },
+          type: {
+            type: "string",
+            enum: ["all", "scene", "knowledge", "memory"],
+          },
           limit: { type: "number" },
         },
       },
@@ -81,16 +111,162 @@ export const AGENT_TOOLS = [
     type: "function" as const,
     function: {
       name: "read_resource",
-      description: "读取指定资源（如某个场景scene的正文全文）。支持通过 offset 和 maxLength 进行分段读取或完整读取全篇。",
+      description:
+        "读取指定资源（scene/knowledge/memory/manuscript）。type=manuscript 时读取全项目拼接正文（id 传任意 manuscriptId 或 projectId均可）；支持 offset/maxLength 分段读取。当 isTruncated=true 时必须继续用 offset 读取剩余部分。",
       parameters: {
         type: "object",
         properties: {
-          type: { type: "string", enum: ["scene", "knowledge", "memory", "manuscript"] },
-          id: { type: "string", description: "资源ID" },
+          type: {
+            type: "string",
+            enum: ["scene", "knowledge", "memory", "manuscript"],
+          },
+          id: {
+            type: "string",
+            description: "资源ID；manuscript 类型可传 projectId 表示全项目",
+          },
           offset: { type: "number", description: "起始字符偏移量，默认为0" },
-          maxLength: { type: "number", description: "最大读取字符数，默认为100000（足以容纳全篇长篇小说）" },
+          maxLength: {
+            type: "number",
+            description: "最大读取字符数，默认为100000",
+          },
         },
         required: ["type", "id"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "read_full_manuscript",
+      description:
+        "【首选】一次性读取当前作品全篇正文（服务端自动聚合所有场景并拼接）。无需事先 list_resources，不知道 sceneId 也能直接调用。支持 offset/maxLength 分页，isTruncated=true 时继续分页读取。",
+      parameters: {
+        type: "object",
+        properties: {
+          manuscriptId: {
+            type: "string",
+            description:
+              "可选：指定 manuscriptId，只读该文稿；不传则读取全项目所有场景拼接",
+          },
+          offset: { type: "number", description: "起始字符偏移量，默认为0" },
+          maxLength: {
+            type: "number",
+            description: "最大读取字符数，默认为100000",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "search_manuscript",
+      description:
+        "在全篇正文中关键词搜索，返回含上下文的片段与偏移量，用于定位细节后再精读。",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "搜索关键词" },
+          manuscriptId: {
+            type: "string",
+            description: "可选 manuscriptId 限定范围",
+          },
+          limit: { type: "number", description: "最大结果数，默认10" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "search_knowledge",
+      description: "在知识库（人物/世界观/设定）中搜索。",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "搜索关键词" },
+          category: { type: "string", description: "可选知识类型过滤" },
+          limit: { type: "number", description: "最大结果数，默认10" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "read_knowledge_source",
+      description: "读取知识节点详情及关联附件。",
+      parameters: {
+        type: "object",
+        properties: { nodeId: { type: "string", description: "知识节点ID" } },
+        required: ["nodeId"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "inspect_media_segment",
+      description: "查看媒体片段的转写与视觉描述。",
+      parameters: {
+        type: "object",
+        properties: {
+          segmentId: { type: "string", description: "媒体片段ID" },
+        },
+        required: ["segmentId"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "get_revision",
+      description: "获取场景的历史版本内容。",
+      parameters: {
+        type: "object",
+        properties: {
+          sceneId: { type: "string", description: "场景ID" },
+          revisionNumber: { type: "number", description: "版本号" },
+          revisionId: { type: "string", description: "版本ID" },
+        },
+        required: ["sceneId"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "compare_revisions",
+      description: "对比两个版本字数与差异。",
+      parameters: {
+        type: "object",
+        properties: {
+          sceneId: { type: "string", description: "场景ID" },
+          baseRevisionNumber: { type: "number" },
+          targetRevisionNumber: { type: "number" },
+        },
+        required: ["sceneId", "baseRevisionNumber", "targetRevisionNumber"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "query_memory",
+      description: "查询记忆（口味/规则/画像）条目。",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string" },
+          scope: {
+            type: "string",
+            enum: ["all", "taste", "rules", "profile"],
+            description: "默认 all",
+          },
+          limit: { type: "number", description: "默认10" },
+        },
       },
     },
   },
@@ -98,11 +274,17 @@ export const AGENT_TOOLS = [
 
 const DEFAULT_SYSTEM_PROMPT = `你是 Verso 严肃文学创作与审读工作台的专属文学助手。
 你恪守纯文学编辑原则：创作者主体性（Author First）、非破坏性改稿（Change Sets）、诊断重于生成、减法法则。
-当作者要求你分章、分场或梳理全篇结构时：
-1. 若尚未读取全文，必须先调用 read_resource 获知正文；若正文超长且返回 isTruncated 为 true，必须使用 offset 分段读取完整，严禁在未读取到全篇真实内容前盲猜或臆造章节与锚点；
-2. 依据自然时空、情节转折与叙事节奏切分；
-3. 调用 propose_scene_splits 出具分场方案。注意：严禁回吐大段正文，每场必须提供准确的原文开头 15~30 字作为 startQuote 切分锚点，且必须完整覆盖从头到尾的所有内容；
-4. 切分完成后向创作者简要陈述分场的文学依据与节奏考量。`;
+
+【上下文自动获取 · 强制规则】
+- 当用户要求涉及正文内容时（阅读全文/通读/分析全篇/分章/分场/梳理结构/审读/总结情节/人物梳理/扩写/改稿等），严禁要求用户粘贴原文，你必须主动调用工具获取上下文。
+- 首选调用 read_full_manuscript 一次性获取全项目拼接正文（无需事先 list_resources）；若返回 isTruncated=true，必须立即用 offset 分段继续读取直到完整，严禁在未读完前盲猜或臆造情节、锚点、人物与章节。
+- 需定位细节时可配合 search_manuscript / read_resource(scene) 精读；需要背景设定时用 search_knowledge / read_knowledge_source。
+- 严禁回吐大段原文给用户；需要提交改动时必须通过 propose_text_change / propose_scene_splits 等 Change Set 工具。
+
+【分章/分场额外要求】
+1. 依据自然时空、情节转折与叙事节奏切分；
+2. 调用 propose_scene_splits 出具方案，每场必须提供准确的原文开头 15~30 字作为 startQuote 切分锚点，且必须完整覆盖从头到尾的所有内容；
+3. 完成后向创作者简要陈述分场的文学依据与节奏考量。`;
 
 export interface StartRunOptions {
   projectId: string;
@@ -126,7 +308,7 @@ export class AgentRuntime {
     threadId: string,
     projectId: string,
     type: AgentRunEventType,
-    payload: Record<string, unknown>
+    payload: Record<string, unknown>,
   ): Promise<AgentRunEvent> {
     const seq = (this.runSeqCounters.get(runId) ?? 0) + 1;
     this.runSeqCounters.set(runId, seq);
@@ -163,7 +345,15 @@ export class AgentRuntime {
    * Starts an asynchronous agent run for a thread with streaming SSE events.
    */
   public async startRun(options: StartRunOptions): Promise<{ run: AgentRun }> {
-    const { projectId, threadId, userPrompt, attachedQuote, skillId, modelRole, systemPrompt } = options;
+    const {
+      projectId,
+      threadId,
+      userPrompt,
+      attachedQuote,
+      skillId,
+      modelRole,
+      systemPrompt,
+    } = options;
 
     // 1. Create User Message in Thread
     await agentRepository.createMessage({
@@ -192,11 +382,17 @@ export class AgentRuntime {
     this.activeRuns.set(run.id, abortController);
 
     // Execute run in background
-    this.executeRunLoop(run, threadId, projectId, userPrompt, attachedQuote, systemPrompt, abortController).catch(
-      async (err) => {
-        console.error(`[AgentRuntime] Run ${run.id} failed with error:`, err);
-      }
-    );
+    this.executeRunLoop(
+      run,
+      threadId,
+      projectId,
+      userPrompt,
+      attachedQuote,
+      systemPrompt,
+      abortController,
+    ).catch(async (err) => {
+      console.error(`[AgentRuntime] Run ${run.id} failed with error:`, err);
+    });
 
     return { run };
   }
@@ -208,7 +404,7 @@ export class AgentRuntime {
     userPrompt: string,
     attachedQuote?: string,
     systemPrompt?: string,
-    abortController?: AbortController
+    abortController?: AbortController,
   ): Promise<void> {
     const runId = run.id;
 
@@ -232,19 +428,57 @@ export class AgentRuntime {
           const assembled = skillRuntime.assemblePrompt(run.skillId);
           finalSystemPrompt = assembled.systemPrompt;
           if (assembled.supportedTools && assembled.supportedTools.length > 0) {
-            const filtered = AGENT_TOOLS.filter((t) =>
-              assembled.supportedTools.includes(t.function.name)
+            // 基础上下文工具始终保留，确保自动获取全文能力不受 skill 过滤影响
+            const BASE_CONTEXT_TOOLS = new Set([
+              "read_full_manuscript",
+              "read_resource",
+              "list_resources",
+              "search_manuscript",
+            ]);
+            const filtered = AGENT_TOOLS.filter(
+              (t) =>
+                assembled.supportedTools.includes(t.function.name) ||
+                BASE_CONTEXT_TOOLS.has(t.function.name),
             );
             if (filtered.length > 0) {
               activeTools = filtered;
             }
           }
         } catch (err) {
-          console.warn(`[AgentRuntime] Failed to assemble skill prompt for ${run.skillId}:`, err);
+          console.warn(
+            `[AgentRuntime] Failed to assemble skill prompt for ${run.skillId}:`,
+            err,
+          );
         }
       }
 
-      messages.push({ role: "system", content: finalSystemPrompt || DEFAULT_SYSTEM_PROMPT });
+      // 注入项目上下文摘要（场景清单），让模型无需 list 也能直接 read
+      let contextSummary = "";
+      try {
+        const scenes = await projectRepository.listScenesByProject(projectId);
+        if (scenes.length > 0) {
+          const lines = scenes
+            .slice(0, 20)
+            .map(
+              (s: any) =>
+                `- [${s.id}] ${s.title || "未命名场景"} (${s.characterCount ?? 0}字)`,
+            );
+          const more =
+            scenes.length > 20
+              ? `\n…还有 ${scenes.length - 20} 个场景未列出`
+              : "";
+          contextSummary = `\n\n【当前作品上下文摘要 · 已自动注入，无需再要求用户粘贴】\n项目 ${projectId} 共有 ${scenes.length} 个场景：\n${lines.join("\n")}${more}\n你可直接调用 read_full_manuscript 获取全文，或用 read_resource(type=scene, id=场景ID) 精读单场。`;
+        } else {
+          contextSummary = `\n\n【当前作品上下文摘要】项目 ${projectId} 暂无场景内容。`;
+        }
+      } catch (e) {
+        console.warn("[AgentRuntime] Failed to build context summary:", e);
+      }
+
+      messages.push({
+        role: "system",
+        content: (finalSystemPrompt || DEFAULT_SYSTEM_PROMPT) + contextSummary,
+      });
 
       let contentToSend = userPrompt;
       if (attachedQuote) {
@@ -254,13 +488,17 @@ export class AgentRuntime {
 
       let accumulatedText = "";
       let accumulatedThought = "";
-      const maxTurns = 3;
+      const maxTurns = 8;
       let turn = 0;
 
       while (turn < maxTurns) {
         turn++;
         let turnText = "";
-        const turnToolCalls: Array<{ id: string; name: string; arguments: string }> = [];
+        const turnToolCalls: Array<{
+          id: string;
+          name: string;
+          arguments: string;
+        }> = [];
 
         const stream = reasoningModel.stream(
           {
@@ -269,7 +507,7 @@ export class AgentRuntime {
           },
           {
             signal: abortController?.signal,
-          }
+          },
         );
 
         for await (const chunk of stream) {
@@ -333,7 +571,10 @@ export class AgentRuntime {
           try {
             const parsedArgs = JSON.parse(tc.arguments || "{}");
             if (tc.name === "propose_scene_splits") {
-              const res = await proposalToolsEngine.proposeSceneSplits(parsedArgs, toolCtx);
+              const res = await proposalToolsEngine.proposeSceneSplits(
+                parsedArgs,
+                toolCtx,
+              );
               toolResult = res;
               await this.emitEvent(runId, threadId, projectId, "change_set", {
                 changeSetId: res.changeSetId,
@@ -343,16 +584,75 @@ export class AgentRuntime {
                 coverage: res.coverage,
               });
             } else if (tc.name === "propose_text_change") {
-              const res = await proposalToolsEngine.proposeTextChange(parsedArgs, toolCtx);
+              const res = await proposalToolsEngine.proposeTextChange(
+                parsedArgs,
+                toolCtx,
+              );
               toolResult = res;
               await this.emitEvent(runId, threadId, projectId, "change_set", {
                 changeSetId: res.changeSetId,
                 status: res.status,
               });
             } else if (tc.name === "list_resources") {
-              toolResult = await readToolsEngine.listResources(parsedArgs, toolCtx);
+              toolResult = await readToolsEngine.listResources(
+                parsedArgs,
+                toolCtx,
+              );
             } else if (tc.name === "read_resource") {
-              toolResult = await readToolsEngine.readResource(parsedArgs, toolCtx);
+              toolResult = await readToolsEngine.readResource(
+                parsedArgs,
+                toolCtx,
+              );
+            } else if (tc.name === "read_full_manuscript") {
+              toolResult = await readToolsEngine.readFullManuscript(
+                projectId,
+                parsedArgs,
+              );
+              // 同步记录 receipt
+              toolCtx.receiptBuilder?.recordItem({
+                resourceType: "scene",
+                resourceId: (toolResult as any).id || projectId,
+                inclusionMode: (toolResult as any).isTruncated
+                  ? "excerpt"
+                  : "full",
+                excerptLength: (toolResult as any).content?.length ?? 0,
+                reason: "Read full manuscript via read_full_manuscript",
+              });
+            } else if (tc.name === "search_manuscript") {
+              toolResult = await readToolsEngine.searchManuscript(
+                parsedArgs,
+                toolCtx,
+              );
+            } else if (tc.name === "search_knowledge") {
+              toolResult = await readToolsEngine.searchKnowledge(
+                parsedArgs,
+                toolCtx,
+              );
+            } else if (tc.name === "read_knowledge_source") {
+              toolResult = await readToolsEngine.readKnowledgeSource(
+                parsedArgs,
+                toolCtx,
+              );
+            } else if (tc.name === "inspect_media_segment") {
+              toolResult = await readToolsEngine.inspectMediaSegment(
+                parsedArgs,
+                toolCtx,
+              );
+            } else if (tc.name === "get_revision") {
+              toolResult = await readToolsEngine.getRevision(
+                parsedArgs,
+                toolCtx,
+              );
+            } else if (tc.name === "compare_revisions") {
+              toolResult = await readToolsEngine.compareRevisions(
+                parsedArgs,
+                toolCtx,
+              );
+            } else if (tc.name === "query_memory") {
+              toolResult = await readToolsEngine.queryMemory(
+                parsedArgs,
+                toolCtx,
+              );
             } else {
               toolResult = { error: `Unknown tool: ${tc.name}` };
             }
@@ -451,15 +751,26 @@ export class AgentRuntime {
     }
 
     const run = await agentRepository.getRunById(runId);
-    if (run && run.status !== "completed" && run.status !== "cancelled" && run.status !== "failed") {
+    if (
+      run &&
+      run.status !== "completed" &&
+      run.status !== "cancelled" &&
+      run.status !== "failed"
+    ) {
       await agentRepository.updateRun(runId, {
         status: "cancelled",
         completedAt: new Date().toISOString(),
       });
 
-      await this.emitEvent(runId, run.threadId, run.projectId, "status_change", {
-        status: "cancelled",
-      });
+      await this.emitEvent(
+        runId,
+        run.threadId,
+        run.projectId,
+        "status_change",
+        {
+          status: "cancelled",
+        },
+      );
       this.runSeqCounters.delete(runId);
       return true;
     }

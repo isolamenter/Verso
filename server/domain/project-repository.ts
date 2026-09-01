@@ -11,7 +11,7 @@ import {
   importJobs,
   changeSets,
 } from "../db/schema";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, desc, asc, and, inArray } from "drizzle-orm";
 import type { IProjectRepository } from "./types";
 import type {
   Project,
@@ -53,7 +53,9 @@ export class ProjectRepository implements IProjectRepository {
     return created as unknown as WorkspaceSettings;
   }
 
-  async updateWorkspaceSettings(input: Partial<WorkspaceSettings>): Promise<WorkspaceSettings> {
+  async updateWorkspaceSettings(
+    input: Partial<WorkspaceSettings>,
+  ): Promise<WorkspaceSettings> {
     const existing = await this.getWorkspaceSettings();
     const [updated] = await db
       .update(workspaceSettings)
@@ -85,13 +87,21 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   async getProjectById(id: string): Promise<Project | null> {
-    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, id));
     return (project as unknown as Project) ?? null;
   }
 
-  async listProjects(options: { includeArchived?: boolean } = {}): Promise<Project[]> {
+  async listProjects(
+    options: { includeArchived?: boolean } = {},
+  ): Promise<Project[]> {
     if (options.includeArchived) {
-      const rows = await db.select().from(projects).orderBy(desc(projects.updatedAt));
+      const rows = await db
+        .select()
+        .from(projects)
+        .orderBy(desc(projects.updatedAt));
       return rows as unknown as Project[];
     }
     const rows = await db
@@ -102,7 +112,9 @@ export class ProjectRepository implements IProjectRepository {
     return rows as unknown as Project[];
   }
 
-  async listProjectsWithSummary(options: { includeArchived?: boolean } = {}): Promise<ProjectSummary[]> {
+  async listProjectsWithSummary(
+    options: { includeArchived?: boolean } = {},
+  ): Promise<ProjectSummary[]> {
     const projectList = await this.listProjects(options);
     const results: ProjectSummary[] = [];
 
@@ -121,7 +133,12 @@ export class ProjectRepository implements IProjectRepository {
       const openChanges = await db
         .select({ id: changeSets.id })
         .from(changeSets)
-        .where(eq(changeSets.projectId, proj.id));
+        .where(
+          and(
+            eq(changeSets.projectId, proj.id),
+            inArray(changeSets.status, ["proposed", "needs_rebase"]),
+          ),
+        );
 
       results.push({
         ...proj,
@@ -165,7 +182,7 @@ export class ProjectRepository implements IProjectRepository {
 
   async upsertProjectSettings(
     projectId: string,
-    input: Partial<ProjectSettings>
+    input: Partial<ProjectSettings>,
   ): Promise<ProjectSettings> {
     const id = input.id ?? crypto.randomUUID();
     const [settings] = await db
@@ -212,7 +229,10 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   async getManuscriptById(id: string): Promise<Manuscript | null> {
-    const [manuscript] = await db.select().from(manuscripts).where(eq(manuscripts.id, id));
+    const [manuscript] = await db
+      .select()
+      .from(manuscripts)
+      .where(eq(manuscripts.id, id));
     return (manuscript as unknown as Manuscript) ?? null;
   }
 
@@ -225,7 +245,10 @@ export class ProjectRepository implements IProjectRepository {
     return rows as unknown as Manuscript[];
   }
 
-  async updateManuscript(id: string, input: UpdateManuscriptInput): Promise<Manuscript> {
+  async updateManuscript(
+    id: string,
+    input: UpdateManuscriptInput,
+  ): Promise<Manuscript> {
     const [manuscript] = await db
       .update(manuscripts)
       .set({
@@ -250,22 +273,20 @@ export class ProjectRepository implements IProjectRepository {
     const content = input.content ?? "";
     const characterCount = content.length;
 
-    await db
-      .insert(scenes)
-      .values({
-        id,
-        manuscriptId: input.manuscriptId,
-        projectId: input.projectId,
-        title: input.title,
-        order: input.order ?? 0,
-        content,
-        pov: input.pov,
-        location: input.location,
-        timeframe: input.timeframe,
-        summary: input.summary,
-        characterCount,
-        metadata: input.metadata ?? {},
-      });
+    await db.insert(scenes).values({
+      id,
+      manuscriptId: input.manuscriptId,
+      projectId: input.projectId,
+      title: input.title,
+      order: input.order ?? 0,
+      content,
+      pov: input.pov,
+      location: input.location,
+      timeframe: input.timeframe,
+      summary: input.summary,
+      characterCount,
+      metadata: input.metadata ?? {},
+    });
 
     // Create initial revision
     const initialRevId = crypto.randomUUID();
@@ -319,7 +340,10 @@ export class ProjectRepository implements IProjectRepository {
       .update(scenes)
       .set({
         ...input,
-        characterCount: input.content !== undefined ? input.content.length : input.characterCount,
+        characterCount:
+          input.content !== undefined
+            ? input.content.length
+            : input.characterCount,
         updatedAt: new Date(),
       })
       .where(eq(scenes.id, id))
@@ -335,7 +359,9 @@ export class ProjectRepository implements IProjectRepository {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async createSceneRevision(input: CreateSceneRevisionInput): Promise<SceneRevision> {
+  async createSceneRevision(
+    input: CreateSceneRevisionInput,
+  ): Promise<SceneRevision> {
     return await createSceneRevisionAtomic({
       sceneId: input.sceneId,
       projectId: input.projectId,
@@ -350,7 +376,10 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   async getSceneRevisionById(id: string): Promise<SceneRevision | null> {
-    const [rev] = await db.select().from(sceneRevisions).where(eq(sceneRevisions.id, id));
+    const [rev] = await db
+      .select()
+      .from(sceneRevisions)
+      .where(eq(sceneRevisions.id, id));
     return (rev as unknown as SceneRevision) ?? null;
   }
 
@@ -373,7 +402,9 @@ export class ProjectRepository implements IProjectRepository {
     return rows as unknown as SceneRevision[];
   }
 
-  async createLiteraryAnnotation(input: CreateLiteraryAnnotationInput): Promise<LiteraryAnnotation> {
+  async createLiteraryAnnotation(
+    input: CreateLiteraryAnnotationInput,
+  ): Promise<LiteraryAnnotation> {
     const id = input.id ?? crypto.randomUUID();
     const [anno] = await db
       .insert(literaryAnnotations)
@@ -399,7 +430,9 @@ export class ProjectRepository implements IProjectRepository {
     return anno as unknown as LiteraryAnnotation;
   }
 
-  async listLiteraryAnnotationsByScene(sceneId: string): Promise<LiteraryAnnotation[]> {
+  async listLiteraryAnnotationsByScene(
+    sceneId: string,
+  ): Promise<LiteraryAnnotation[]> {
     const rows = await db
       .select()
       .from(literaryAnnotations)
@@ -408,7 +441,9 @@ export class ProjectRepository implements IProjectRepository {
     return rows as unknown as LiteraryAnnotation[];
   }
 
-  async listLiteraryAnnotationsByProject(projectId: string): Promise<LiteraryAnnotation[]> {
+  async listLiteraryAnnotationsByProject(
+    projectId: string,
+  ): Promise<LiteraryAnnotation[]> {
     const rows = await db
       .select()
       .from(literaryAnnotations)
@@ -418,7 +453,9 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   async deleteLiteraryAnnotation(id: string): Promise<boolean> {
-    const result = await db.delete(literaryAnnotations).where(eq(literaryAnnotations.id, id));
+    const result = await db
+      .delete(literaryAnnotations)
+      .where(eq(literaryAnnotations.id, id));
     return (result.rowCount ?? 0) > 0;
   }
 
@@ -473,7 +510,10 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   async getImportJobById(id: string): Promise<ImportJob | null> {
-    const [job] = await db.select().from(importJobs).where(eq(importJobs.id, id));
+    const [job] = await db
+      .select()
+      .from(importJobs)
+      .where(eq(importJobs.id, id));
     return (job as unknown as ImportJob) ?? null;
   }
 }

@@ -1,4 +1,9 @@
-import { projectRepository, knowledgeRepository, memoryRepository, manuscriptService } from "../../domain";
+import {
+  projectRepository,
+  knowledgeRepository,
+  memoryRepository,
+  manuscriptService,
+} from "../../domain";
 import { extractPlainText } from "../../../shared/manuscript";
 import type { ContextReceiptBuilder } from "../context/context-receipt-builder";
 import type {
@@ -26,8 +31,16 @@ export class ReadToolsEngine {
   /**
    * 1. list_resources
    */
-  public async listResources(input: ListResourcesInput, ctx: ToolExecutionContext) {
-    const results: Array<{ id: string; type: string; title: string; updatedAt: string }> = [];
+  public async listResources(
+    input: ListResourcesInput,
+    ctx: ToolExecutionContext,
+  ) {
+    const results: Array<{
+      id: string;
+      type: string;
+      title: string;
+      updatedAt: string;
+    }> = [];
 
     if (input.type === "all" || input.type === "scene") {
       const scenes = await projectRepository.listScenesByProject(ctx.projectId);
@@ -41,7 +54,10 @@ export class ReadToolsEngine {
       }
     }
 
-    if (!ctx.isColdReader && (input.type === "all" || input.type === "knowledge")) {
+    if (
+      !ctx.isColdReader &&
+      (input.type === "all" || input.type === "knowledge")
+    ) {
       const nodes = await knowledgeRepository.listNodesByProject(ctx.projectId);
       for (const kn of nodes.slice(0, input.limit)) {
         results.push({
@@ -53,8 +69,13 @@ export class ReadToolsEngine {
       }
     }
 
-    if (!ctx.isColdReader && (input.type === "all" || input.type === "memory")) {
-      const memories = await memoryRepository.listMemoryEntriesByProject(ctx.projectId);
+    if (
+      !ctx.isColdReader &&
+      (input.type === "all" || input.type === "memory")
+    ) {
+      const memories = await memoryRepository.listMemoryEntriesByProject(
+        ctx.projectId,
+      );
       for (const m of memories.slice(0, input.limit)) {
         results.push({
           id: m.id,
@@ -74,15 +95,108 @@ export class ReadToolsEngine {
   /**
    * 2. read_resource
    */
-  public async readResource(input: ReadResourceInput, ctx: ToolExecutionContext) {
+  /**
+   * 聚合读取：一次性返回当前作品所有场景的拼接全文（服务端自动分页聚合）。
+   * 供 read_resource(type=manuscript) 与新增 read_full_manuscript 工具复用。
+   */
+  public async readFullManuscript(
+    projectId: string,
+    opts?: { offset?: number; maxLength?: number; manuscriptId?: string },
+  ) {
+    const offset = opts?.offset ?? 0;
+    const maxLen = opts?.maxLength ?? 100000;
+    let scenes: Array<any>;
+    // 优先按 manuscriptId 过滤，否则返回全项目拼接
+    if (opts?.manuscriptId) {
+      const msList =
+        await manuscriptService.listManuscriptsWithScenes(projectId);
+      const target = msList.find((m) => m.id === opts.manuscriptId);
+      scenes = target ? target.scenes : [];
+    } else {
+      const all = await projectRepository.listScenesByProject(projectId);
+      scenes = all;
+    }
+    if (!scenes || scenes.length === 0) {
+      return {
+        id: opts?.manuscriptId || projectId,
+        type: "manuscript",
+        title: "空文稿",
+        content: "",
+        characterCount: 0,
+        isTruncated: false,
+        sceneCount: 0,
+        scenes: [],
+      };
+    }
+    const parts: string[] = [];
+    const sceneMeta: Array<{
+      id: string;
+      title: string;
+      characterCount: number;
+    }> = [];
+    for (const sc of scenes) {
+      const plain = extractPlainText(sc.content);
+      parts.push(plain);
+      sceneMeta.push({
+        id: sc.id,
+        title: sc.title || "未命名场景",
+        characterCount: plain.length,
+      });
+    }
+    const full = parts.join("\n\n");
+    const sliceStart = Math.min(Math.max(0, offset), full.length);
+    const sliceEnd = Math.min(sliceStart + maxLen, full.length);
+    const truncated = full.slice(sliceStart, sliceEnd);
+    const isTruncated = sliceEnd < full.length || sliceStart > 0;
+    return {
+      id: opts?.manuscriptId || projectId,
+      type: "manuscript" as const,
+      title: "全文拼接",
+      content: truncated,
+      offset: sliceStart,
+      characterCount: full.length,
+      isTruncated,
+      sceneCount: scenes.length,
+      scenes: sceneMeta,
+    };
+  }
+
+  public async readResource(
+    input: ReadResourceInput,
+    ctx: ToolExecutionContext,
+  ) {
     const { type, id } = input;
     const offset = input.offset ?? 0;
     const maxLen = input.maxLength ?? 100000;
 
+    if (type === "manuscript") {
+      // id 可能是 manuscriptId，也可能是 projectId（语义：读全项目）
+      const msList = await manuscriptService.listManuscriptsWithScenes(
+        ctx.projectId,
+      );
+      // 尝试按 manuscriptId 匹配，否则回退为全项目拼接
+      const matched = msList.find((m) => m.id === id);
+      const result = await this.readFullManuscript(ctx.projectId, {
+        offset,
+        maxLength: maxLen,
+        manuscriptId: matched ? id : undefined,
+      });
+      ctx.receiptBuilder?.recordItem({
+        resourceType: "scene",
+        resourceId: result.id,
+        inclusionMode: result.isTruncated ? "excerpt" : "full",
+        excerptLength: result.content.length,
+        reason: "Read full manuscript (aggregated)",
+      });
+      return result;
+    }
+
     if (type === "scene") {
       const scene = await manuscriptService.getSceneById(id, ctx.projectId);
       if (!scene) {
-        return { error: `Scene not found or unauthorized in project ${ctx.projectId}` };
+        return {
+          error: `Scene not found or unauthorized in project ${ctx.projectId}`,
+        };
       }
 
       const plain = extractPlainText(scene.content);
@@ -113,12 +227,16 @@ export class ReadToolsEngine {
 
     if (type === "knowledge") {
       if (ctx.isColdReader) {
-        return { error: "Cold Reader policy prohibits reading external knowledge" };
+        return {
+          error: "Cold Reader policy prohibits reading external knowledge",
+        };
       }
 
       const node = await knowledgeRepository.getNodeById(id);
       if (!node || node.projectId !== ctx.projectId) {
-        return { error: `Knowledge node not found or unauthorized in project ${ctx.projectId}` };
+        return {
+          error: `Knowledge node not found or unauthorized in project ${ctx.projectId}`,
+        };
       }
 
       const plain = extractPlainText(node.content);
@@ -153,7 +271,9 @@ export class ReadToolsEngine {
 
       const entry = await memoryRepository.getMemoryEntryById(id);
       if (!entry || entry.projectId !== ctx.projectId) {
-        return { error: `Memory entry not found or unauthorized in project ${ctx.projectId}` };
+        return {
+          error: `Memory entry not found or unauthorized in project ${ctx.projectId}`,
+        };
       }
 
       ctx.receiptBuilder?.recordItem({
@@ -177,9 +297,17 @@ export class ReadToolsEngine {
   /**
    * 3. search_manuscript
    */
-  public async searchManuscript(input: SearchManuscriptInput, ctx: ToolExecutionContext) {
+  public async searchManuscript(
+    input: SearchManuscriptInput,
+    ctx: ToolExecutionContext,
+  ) {
     const scenes = await projectRepository.listScenesByProject(ctx.projectId);
-    const results: Array<{ sceneId: string; sceneTitle: string; snippet: string; offset: number }> = [];
+    const results: Array<{
+      sceneId: string;
+      sceneTitle: string;
+      snippet: string;
+      offset: number;
+    }> = [];
 
     const queryLower = input.query.toLowerCase();
 
@@ -227,14 +355,22 @@ export class ReadToolsEngine {
   /**
    * 4. search_knowledge
    */
-  public async searchKnowledge(input: SearchKnowledgeInput, ctx: ToolExecutionContext) {
+  public async searchKnowledge(
+    input: SearchKnowledgeInput,
+    ctx: ToolExecutionContext,
+  ) {
     if (ctx.isColdReader) {
       return { error: "Cold Reader policy prohibits searching knowledge" };
     }
 
     const nodes = await knowledgeRepository.listNodesByProject(ctx.projectId);
     const queryLower = input.query.toLowerCase();
-    const matches: Array<{ nodeId: string; title: string; kind: string; snippet: string }> = [];
+    const matches: Array<{
+      nodeId: string;
+      title: string;
+      kind: string;
+      snippet: string;
+    }> = [];
 
     for (const node of nodes) {
       if (input.category && node.kind !== input.category) continue;
@@ -244,8 +380,13 @@ export class ReadToolsEngine {
       const contentMatch = plainContent.toLowerCase().includes(queryLower);
 
       if (titleMatch || contentMatch) {
-        const start = Math.max(0, plainContent.toLowerCase().indexOf(queryLower) - 30);
-        const snippet = plainContent ? `...${plainContent.slice(start, start + 80)}...` : node.title;
+        const start = Math.max(
+          0,
+          plainContent.toLowerCase().indexOf(queryLower) - 30,
+        );
+        const snippet = plainContent
+          ? `...${plainContent.slice(start, start + 80)}...`
+          : node.title;
 
         matches.push({
           nodeId: node.id,
@@ -276,9 +417,14 @@ export class ReadToolsEngine {
   /**
    * 5. read_knowledge_source
    */
-  public async readKnowledgeSource(input: ReadKnowledgeSourceInput, ctx: ToolExecutionContext) {
+  public async readKnowledgeSource(
+    input: ReadKnowledgeSourceInput,
+    ctx: ToolExecutionContext,
+  ) {
     if (ctx.isColdReader) {
-      return { error: "Cold Reader policy prohibits reading knowledge sources" };
+      return {
+        error: "Cold Reader policy prohibits reading knowledge sources",
+      };
     }
 
     const node = await knowledgeRepository.getNodeById(input.nodeId);
@@ -287,7 +433,9 @@ export class ReadToolsEngine {
     }
 
     const assets = await knowledgeRepository.listAssetsByProject(ctx.projectId);
-    const relevantAssets = assets.filter((a: KnowledgeAsset) => a.nodeId === node.id);
+    const relevantAssets = assets.filter(
+      (a: KnowledgeAsset) => a.nodeId === node.id,
+    );
 
     ctx.receiptBuilder?.recordItem({
       resourceType: "knowledge_node",
@@ -311,12 +459,17 @@ export class ReadToolsEngine {
   /**
    * 6. inspect_media_segment
    */
-  public async inspectMediaSegment(input: InspectMediaSegmentInput, ctx: ToolExecutionContext) {
+  public async inspectMediaSegment(
+    input: InspectMediaSegmentInput,
+    ctx: ToolExecutionContext,
+  ) {
     if (ctx.isColdReader) {
       return { error: "Cold Reader policy prohibits media inspection" };
     }
 
-    const segment = await knowledgeRepository.getMediaSegmentById(input.segmentId);
+    const segment = await knowledgeRepository.getMediaSegmentById(
+      input.segmentId,
+    );
     if (!segment || segment.projectId !== ctx.projectId) {
       return { error: "Media segment not found or unauthorized" };
     }
@@ -341,13 +494,18 @@ export class ReadToolsEngine {
    * 7. get_revision
    */
   public async getRevision(input: GetRevisionInput, ctx: ToolExecutionContext) {
-    const revisions = await manuscriptService.listSceneRevisions(input.sceneId, ctx.projectId);
+    const revisions = await manuscriptService.listSceneRevisions(
+      input.sceneId,
+      ctx.projectId,
+    );
     let targetRev = null;
 
     if (input.revisionId) {
       targetRev = revisions.find((r) => r.id === input.revisionId);
     } else if (input.revisionNumber) {
-      targetRev = revisions.find((r) => r.revisionNumber === input.revisionNumber);
+      targetRev = revisions.find(
+        (r) => r.revisionNumber === input.revisionNumber,
+      );
     } else {
       targetRev = revisions[0];
     }
@@ -378,10 +536,20 @@ export class ReadToolsEngine {
   /**
    * 8. compare_revisions
    */
-  public async compareRevisions(input: CompareRevisionsInput, ctx: ToolExecutionContext) {
-    const revisions = await manuscriptService.listSceneRevisions(input.sceneId, ctx.projectId);
-    const base = revisions.find((r) => r.revisionNumber === input.baseRevisionNumber);
-    const target = revisions.find((r) => r.revisionNumber === input.targetRevisionNumber);
+  public async compareRevisions(
+    input: CompareRevisionsInput,
+    ctx: ToolExecutionContext,
+  ) {
+    const revisions = await manuscriptService.listSceneRevisions(
+      input.sceneId,
+      ctx.projectId,
+    );
+    const base = revisions.find(
+      (r) => r.revisionNumber === input.baseRevisionNumber,
+    );
+    const target = revisions.find(
+      (r) => r.revisionNumber === input.targetRevisionNumber,
+    );
 
     if (!base || !target) {
       return { error: "One or both revisions not found" };
@@ -408,7 +576,9 @@ export class ReadToolsEngine {
       return { error: "Cold Reader policy prohibits memory inspection" };
     }
 
-    const memories = await memoryRepository.listMemoryEntriesByProject(ctx.projectId);
+    const memories = await memoryRepository.listMemoryEntriesByProject(
+      ctx.projectId,
+    );
     const results = memories.slice(0, input.limit).map((m: MemoryEntry) => {
       ctx.receiptBuilder?.recordItem({
         resourceType: "memory_entry",
@@ -433,4 +603,3 @@ export class ReadToolsEngine {
 }
 
 export const readToolsEngine = new ReadToolsEngine();
-
