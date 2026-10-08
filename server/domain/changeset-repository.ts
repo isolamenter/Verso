@@ -171,7 +171,7 @@ export class ChangeSetRepository implements IChangeSetRepository {
 
     // If review decision is for a specific operation, update operation status
     if (input.operationId) {
-      const opStatus = input.decision === "approved" ? "approved" : "rejected";
+      const opStatus = input.decision === "approved" ? "approved" : input.decision === "deferred" || input.decision === "revised" ? "proposed" : "rejected";
       await db
         .update(changeOperations)
         .set({ status: opStatus })

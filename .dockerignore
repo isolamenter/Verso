@@ -1,0 +1,11 @@
+.git
+node_modules
+build
+.react-router
+.env
+.env.*
+data
+logs
+*.log
+.codex
+.agents

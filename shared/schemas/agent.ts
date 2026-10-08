@@ -15,6 +15,7 @@ export const AgentRunStatusEnum = z.enum([
   "awaiting_user",
   "proposing_changes",
   "completed",
+  "partial",
   "cancelled",
   "failed",
 ]);

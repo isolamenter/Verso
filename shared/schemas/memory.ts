@@ -150,6 +150,7 @@ export const CreateTasteEntrySchema = z.object({
 export type CreateTasteEntryInput = z.infer<typeof CreateTasteEntrySchema>;
 
 export const UpdateTasteEntrySchema = z.object({
+  explicitness: TasteExplicitnessEnum.optional(),
   preference: z.string().min(1).optional(),
   conditions: z.array(z.string()).optional(),
   antiPreferences: z.array(z.string()).optional(),

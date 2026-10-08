@@ -40,12 +40,8 @@ export function useAgentRunStream({
     } catch (err) {
       console.error("Failed to cancel run:", err);
     }
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    setIsStreaming(false);
-    setStatus("cancelled");
+    // Keep the stream open until the server persists the partial answer and
+    // receipt, then its cancelled event refreshes the thread.
   }, [runId]);
 
   useEffect(() => {
@@ -82,11 +78,12 @@ export function useAgentRunStream({
         if (newStatus) {
           statusRef.current = newStatus;
           setStatus(newStatus);
-          if (newStatus === "completed") {
+          if (newStatus === "completed" || newStatus === "partial") {
             closeStream();
             onCompletedRef.current?.();
           } else if (newStatus === "cancelled") {
             closeStream();
+            onCompletedRef.current?.();
           } else if (newStatus === "failed") {
             closeStream();
             onErrorRef.current?.(payload.error || "Agent run failed");
@@ -177,7 +174,7 @@ export function useAgentRunStream({
       if (eventSourceRef.current) {
         const lastStatus = statusRef.current;
         closeStream();
-        if (lastStatus !== "completed" && lastStatus !== "cancelled" && lastStatus !== "failed") {
+        if (lastStatus !== "completed" && lastStatus !== "partial" && lastStatus !== "cancelled" && lastStatus !== "failed") {
           statusRef.current = "failed";
           setStatus("failed");
           onErrorRef.current?.("模型请求连接异常中断或处理失败");

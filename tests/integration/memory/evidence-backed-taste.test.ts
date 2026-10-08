@@ -53,11 +53,12 @@ describe("E18 — Hierarchical Memory and Evidence-Backed Taste", () => {
     });
 
     expect(record3.isNew).toBe(true);
-    expect(record3.taste.supersedesId).toBe(record1.taste.id);
+    expect(record3.taste.status).toBe("candidate");
+    expect(record3.taste.supersedesId).toBeNull();
 
     // Old taste entry should now be contested
     const oldTaste = await memoryRepository.getTasteEntryById(record1.taste.id);
-    expect(oldTaste?.status).toBe("contested");
+    expect(oldTaste?.status).toBe("active");
 
     // 4. Test Scoped Memories and Cold Reader Isolation
     const normalMemories = await memoryService.getScopedMemories({
@@ -98,7 +99,8 @@ describe("E18 — Hierarchical Memory and Evidence-Backed Taste", () => {
 
     const req = new Request("http://127.0.0.1:4173/api/projects/p/memory", {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intent: "disable", tasteId: tasteRecord.taste.id }),
     });
 
     const actionRes = (await memoryAction({
@@ -113,7 +115,7 @@ describe("E18 — Hierarchical Memory and Evidence-Backed Taste", () => {
       memories: any[];
       tastes: any[];
     };
-    expect(reloaded.tastes.some((t: any) => t.id === tasteRecord.taste.id)).toBe(false);
+    expect(reloaded.tastes.find((t: any) => t.id === tasteRecord.taste.id)?.status).toBe("disabled");
   });
 });
 

@@ -39,7 +39,9 @@ export class ChangeSetService {
    */
   public async createChangeSetWithOperations(
     input: CreateChangeSetInput,
-    operations: Array<Omit<CreateChangeOperationInput, "changeSetId" | "projectId">>
+    operations: Array<
+      Omit<CreateChangeOperationInput, "changeSetId" | "projectId">
+    >,
   ): Promise<{ changeSet: ChangeSet; operations: ChangeOperation[] }> {
     const changeSet = await changeSetRepository.createChangeSet({
       ...input,
@@ -62,8 +64,12 @@ export class ChangeSetService {
     // Validate the operations immediately
     await this.validateChangeSet(changeSet.id, input.projectId);
 
-    const refreshedChangeSet = await changeSetRepository.getChangeSetById(changeSet.id);
-    const refreshedOps = await changeSetRepository.listOperationsByChangeSet(changeSet.id);
+    const refreshedChangeSet = await changeSetRepository.getChangeSetById(
+      changeSet.id,
+    );
+    const refreshedOps = await changeSetRepository.listOperationsByChangeSet(
+      changeSet.id,
+    );
 
     return {
       changeSet: refreshedChangeSet ?? changeSet,
@@ -76,12 +82,14 @@ export class ChangeSetService {
    */
   public async validateChangeSet(
     changeSetId: string,
-    projectId: string
+    projectId: string,
   ): Promise<{ isValid: boolean; conflictCount: number }> {
-    const ops = await changeSetRepository.listOperationsByChangeSet(changeSetId);
+    const ops =
+      await changeSetRepository.listOperationsByChangeSet(changeSetId);
     let conflictCount = 0;
 
     for (const op of ops) {
+      if (["applied", "rejected"].includes(op.status)) continue;
       const val = await this.validateOperation(op, projectId);
       if (!val.isValid) {
         conflictCount++;
@@ -110,20 +118,30 @@ export class ChangeSetService {
 
   private async validateOperation(
     op: ChangeOperation,
-    projectId: string
+    projectId: string,
   ): Promise<ValidationDetail> {
     if (op.targetType === "scene") {
       const [scene] = await db
         .select()
         .from(scenes)
-        .where(and(eq(scenes.id, op.targetId), eq(scenes.projectId, projectId)));
+        .where(
+          and(eq(scenes.id, op.targetId), eq(scenes.projectId, projectId)),
+        );
 
       if (!scene) {
-        return { isValid: false, status: "conflict", reason: "Target scene does not exist in project" };
+        return {
+          isValid: false,
+          status: "conflict",
+          reason: "Target scene does not exist in project",
+        };
       }
 
       // Check base revision
-      if (op.baseRevisionId && scene.currentRevisionId && op.baseRevisionId !== scene.currentRevisionId) {
+      if (
+        op.baseRevisionId &&
+        scene.currentRevisionId &&
+        op.baseRevisionId !== scene.currentRevisionId
+      ) {
         return {
           isValid: false,
           status: "conflict",
@@ -187,7 +205,8 @@ export class ChangeSetService {
           return {
             isValid: false,
             status: "conflict",
-            reason: "Split scene operation requires at least 2 split targets in payload",
+            reason:
+              "Split scene operation requires at least 2 split targets in payload",
           };
         }
         return { isValid: true, status: "proposed" };
@@ -197,14 +216,26 @@ export class ChangeSetService {
     }
 
     if (op.targetType === "knowledge_node") {
-      if (op.operationType === "update_knowledge" || op.operationType === "archive_knowledge") {
+      if (
+        op.operationType === "update_knowledge" ||
+        op.operationType === "archive_knowledge"
+      ) {
         const [node] = await db
           .select()
           .from(knowledgeNodes)
-          .where(and(eq(knowledgeNodes.id, op.targetId), eq(knowledgeNodes.projectId, projectId)));
+          .where(
+            and(
+              eq(knowledgeNodes.id, op.targetId),
+              eq(knowledgeNodes.projectId, projectId),
+            ),
+          );
 
         if (!node) {
-          return { isValid: false, status: "conflict", reason: "Target knowledge node does not exist in project" };
+          return {
+            isValid: false,
+            status: "conflict",
+            reason: "Target knowledge node does not exist in project",
+          };
         }
       }
       return { isValid: true, status: "proposed" };
@@ -219,15 +250,36 @@ export class ChangeSetService {
   public async createDerivedChangeSet(
     parentChangeSetId: string,
     approvedOperationIds: string[],
-    projectId: string
+    projectId: string,
   ): Promise<{ derivedChangeSet: ChangeSet; operations: ChangeOperation[] }> {
-    const parent = await changeSetRepository.getChangeSetById(parentChangeSetId);
+    const parent =
+      await changeSetRepository.getChangeSetById(parentChangeSetId);
     if (!parent || parent.projectId !== projectId) {
       throw new Error(`Parent ChangeSet not found: ${parentChangeSetId}`);
     }
 
-    const allOps = await changeSetRepository.listOperationsByChangeSet(parentChangeSetId);
-    const approvedOps = allOps.filter((o) => approvedOperationIds.includes(o.id));
+    const allOps =
+      await changeSetRepository.listOperationsByChangeSet(parentChangeSetId);
+    const approvedOps = allOps.filter(
+      (o) =>
+        approvedOperationIds.includes(o.id) &&
+        !["applied", "rejected"].includes(o.status),
+    );
+    if (approvedOps.length !== approvedOperationIds.length)
+      throw new Error("选中的修改已处理或不属于此案卷");
+    for (const op of approvedOps) {
+      const group = op.metadata.dependencyGroup;
+      if (
+        group &&
+        allOps.some(
+          (other) =>
+            other.metadata.dependencyGroup === group &&
+            !approvedOperationIds.includes(other.id) &&
+            !["applied", "rejected"].includes(other.status),
+        )
+      )
+        throw new Error("这组建议相互依赖，请一起选择");
+    }
 
     if (approvedOps.length === 0) {
       throw new Error("No approved operations selected for derived ChangeSet");
@@ -266,14 +318,10 @@ export class ChangeSetService {
         replacementContent: op.replacementContent || undefined,
         literaryTradeoff: op.literaryTradeoff || undefined,
         structuredPayload: op.structuredPayload,
+        metadata: { ...op.metadata, parentOperationId: op.id },
       });
       newOps.push(newOp);
     }
-
-    // Mark parent ChangeSet as partially_approved
-    await changeSetRepository.updateChangeSet(parentChangeSetId, {
-      status: "partially_approved",
-    });
 
     return {
       derivedChangeSet: derived,
@@ -287,14 +335,20 @@ export class ChangeSetService {
    */
   public async applyChangeSet(
     changeSetId: string,
-    projectId: string
+    projectId: string,
   ): Promise<{ success: boolean; applyAttempt: ChangeApplyAttempt }> {
     const changeSet = await changeSetRepository.getChangeSetById(changeSetId);
     if (!changeSet || changeSet.projectId !== projectId) {
       throw new Error(`ChangeSet not found: ${changeSetId}`);
     }
 
-    const ops = await changeSetRepository.listOperationsByChangeSet(changeSetId);
+    if (
+      !["proposed", "approved", "partially_approved"].includes(changeSet.status)
+    )
+      throw new Error("此案卷当前不能采纳");
+    const ops = (
+      await changeSetRepository.listOperationsByChangeSet(changeSetId)
+    ).filter((op) => !["applied", "rejected"].includes(op.status));
     if (ops.length === 0) {
       throw new Error("ChangeSet has no operations to apply");
     }
@@ -303,22 +357,48 @@ export class ChangeSetService {
 
     try {
       await db.transaction(async (tx) => {
+        const [lockedSet] = await tx
+          .select()
+          .from(changeSets)
+          .where(eq(changeSets.id, changeSetId))
+          .for("update");
+        if (
+          !lockedSet ||
+          !["proposed", "approved", "partially_approved"].includes(
+            lockedSet.status,
+          )
+        )
+          throw new Error("案卷已经处理");
+        const originalRevisions = new Map<string, string | null>();
         for (const op of ops) {
           if (op.targetType === "scene") {
             // Lock and fetch scene
             const [scene] = await tx
               .select()
               .from(scenes)
-              .where(and(eq(scenes.id, op.targetId), eq(scenes.projectId, projectId)));
+              .where(
+                and(
+                  eq(scenes.id, op.targetId),
+                  eq(scenes.projectId, projectId),
+                ),
+              )
+              .for("update");
 
             if (!scene) {
-              throw new Error(`Scene not found or unauthorized: ${op.targetId}`);
+              throw new Error(
+                `Scene not found or unauthorized: ${op.targetId}`,
+              );
             }
 
-            // Stale check
-            if (op.baseRevisionId && scene.currentRevisionId && op.baseRevisionId !== scene.currentRevisionId) {
+            if (!originalRevisions.has(scene.id))
+              originalRevisions.set(scene.id, scene.currentRevisionId);
+            // Compare all operations to the version before this atomic round.
+            if (
+              op.baseRevisionId &&
+              op.baseRevisionId !== originalRevisions.get(scene.id)
+            ) {
               throw new Error(
-                `Stale revision conflict on scene ${scene.id}: expected ${op.baseRevisionId}, current is ${scene.currentRevisionId}`
+                `Stale revision conflict on scene ${scene.id}: expected ${op.baseRevisionId}, current is ${scene.currentRevisionId}`,
               );
             }
 
@@ -333,7 +413,9 @@ export class ChangeSetService {
               }> = payload?.splits || [];
 
               if (splits.length === 0) {
-                throw new Error(`Invalid split_scene payload on scene ${scene.id}: no splits provided`);
+                throw new Error(
+                  `Invalid split_scene payload on scene ${scene.id}: no splits provided`,
+                );
               }
 
               // 1. First split updates the target scene (scene.id)
@@ -360,7 +442,7 @@ export class ChangeSetService {
                 projectId,
                 revisionNumber: nextRevisionNumber,
                 content: firstContentJson,
-                changeType: "agent_applied",
+                changeType: "ai_accepted",
                 description: `分场重组：第 1 场《${firstSplit.title}》`,
                 diffSummary: JSON.stringify({
                   changeSetId,
@@ -396,7 +478,12 @@ export class ChangeSetService {
                 const laterScenes = await tx
                   .select()
                   .from(scenes)
-                  .where(and(eq(scenes.manuscriptId, scene.manuscriptId), eq(scenes.projectId, projectId)))
+                  .where(
+                    and(
+                      eq(scenes.manuscriptId, scene.manuscriptId),
+                      eq(scenes.projectId, projectId),
+                    ),
+                  )
                   .orderBy(desc(scenes.order));
 
                 for (const later of laterScenes) {
@@ -440,7 +527,7 @@ export class ChangeSetService {
                     projectId,
                     revisionNumber: 1,
                     content: splitContentJson,
-                    changeType: "agent_applied",
+                    changeType: "ai_accepted",
                     description: `分场重组：第 ${k + 1} 场《${splitItem.title}》`,
                     diffSummary: JSON.stringify({
                       changeSetId,
@@ -472,7 +559,9 @@ export class ChangeSetService {
                 });
 
                 if (!patchRes.success) {
-                  throw new Error(`Failed to apply patch to scene ${scene.id}: ${patchRes.error}`);
+                  throw new Error(
+                    `Failed to apply patch to scene ${scene.id}: ${patchRes.error}`,
+                  );
                 }
                 newContentJson = patchRes.newDocJson;
               } else if (op.operationType === "replace_scene") {
@@ -501,14 +590,14 @@ export class ChangeSetService {
                 projectId,
                 revisionNumber: nextRevisionNumber,
                 content: newContentJson,
-                changeType: "agent_applied",
+                changeType: "ai_accepted",
                 description: `AI 修订采纳: ${changeSet.title}`,
                 diffSummary: JSON.stringify({
                   changeSetId,
                   operationId: op.id,
                   operationType: op.operationType,
                 }),
-                characterCount: newContentJson.length,
+                characterCount: extractPlainText(newContentJson).length,
                 appliedChangeSetId: changeSetId,
                 metadata: { checksum },
               });
@@ -518,6 +607,7 @@ export class ChangeSetService {
                 .update(scenes)
                 .set({
                   content: newContentJson,
+                  characterCount: extractPlainText(newContentJson).length,
                   currentRevisionId: newRevisionId,
                   updatedAt: new Date(),
                 })
@@ -535,11 +625,40 @@ export class ChangeSetService {
                 kind: (payload.kind as any) || "custom",
                 title: (payload.title as string) || "未命名设定",
                 content: op.replacementContent || "",
-                authority: "user_authored_locked",
+                authority: "agent_approved",
                 status: "active",
+                sceneId: payload.sceneId as string | undefined,
+                metadata: { role: "setting", sourceRunId: changeSet.runId },
               });
+              await tx
+                .insert(knowledgeRevisions)
+                .values({
+                  id: crypto.randomUUID(),
+                  nodeId: newNodeId,
+                  projectId,
+                  revisionNumber: 1,
+                  title: payload.title as string,
+                  content: op.replacementContent || "",
+                  changeType: "agent_approved",
+                });
               resultingRevisionMap[newNodeId] = "created";
             } else if (op.operationType === "update_knowledge") {
+              const [node] = await tx
+                .select()
+                .from(knowledgeNodes)
+                .where(
+                  and(
+                    eq(knowledgeNodes.id, op.targetId),
+                    eq(knowledgeNodes.projectId, projectId),
+                  ),
+                )
+                .for("update");
+              if (!node) throw new Error("设定不属于当前作品");
+              if (
+                typeof op.metadata.baseKnowledgeContent === "string" &&
+                node.content !== op.metadata.baseKnowledgeContent
+              )
+                throw new Error("设定内容已变化，请重新核对提案");
               const [latestRev] = await tx
                 .select()
                 .from(knowledgeRevisions)
@@ -565,6 +684,7 @@ export class ChangeSetService {
                 .set({
                   content: op.replacementContent || "",
                   updatedAt: new Date(),
+                  authority: "agent_approved",
                 })
                 .where(eq(knowledgeNodes.id, op.targetId));
 
@@ -588,6 +708,19 @@ export class ChangeSetService {
             .where(eq(changeOperations.id, op.id));
         }
 
+        const parentId = changeSet.metadata.parentChangeSetId;
+        if (typeof parentId === "string") {
+          for (const op of ops)
+            if (typeof op.metadata.parentOperationId === "string")
+              await tx
+                .update(changeOperations)
+                .set({ status: "applied" })
+                .where(eq(changeOperations.id, op.metadata.parentOperationId));
+          await tx
+            .update(changeSets)
+            .set({ status: "partially_approved", updatedAt: new Date() })
+            .where(eq(changeSets.id, parentId));
+        }
         // Mark changeSet applied
         await tx
           .update(changeSets)
@@ -627,4 +760,3 @@ export class ChangeSetService {
 }
 
 export const changeSetService = new ChangeSetService();
-

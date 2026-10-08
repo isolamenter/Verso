@@ -1,389 +1,421 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Typography from "@tiptap/extension-typography";
-import Highlight from "@tiptap/extension-highlight";
-import CharacterCount from "@tiptap/extension-character-count";
 import Placeholder from "@tiptap/extension-placeholder";
+import {
+  Bold,
+  Italic,
+  Undo2,
+  Redo2,
+  Quote,
+  Save,
+  Search,
+  Pencil,
+  X,
+} from "lucide-react";
+import { DiffViewer } from "../changes/DiffViewer";
 import { useI18n } from "../../i18n";
-import { isTipTapDocJson, plainTextToTipTapDoc, extractPlainText } from "../../../shared/manuscript";
-import { parseUploadedFile } from "../../utils/fileImporter";
+import {
+  extractPlainText,
+  isTipTapDocJson,
+  plainTextToTipTapDoc,
+  findBestAnchorMatch,
+} from "../../../shared/manuscript";
+import type { Scene } from "../../../shared/schemas/project";
+import type { TaskRequest } from "../../../shared/schemas/task";
 
 export interface ManuscriptEditorProps {
-  initialContent: string;
-  sceneTitle: string;
-  baseRevisionId?: string;
-  onSave: (contentJson: string, description?: string) => Promise<void>;
-  onCancel: () => void;
+  scene: Scene;
+  editable: boolean;
+  poetry?: boolean;
+  historical?: boolean;
+  locateQuote?: string;
+  resumeCursor?: number;
+  onSave: (content: string, expectedBaseRevisionId?: string) => Promise<Scene>;
+  onDirtyChange: (dirty: boolean) => void;
+  onSelection: (selection: TaskRequest["selection"]) => void;
+  onCursor: (cursor: number) => void;
+  onEnterEdit: () => void;
 }
+const documentFrom = (content: string) =>
+  isTipTapDocJson(content)
+    ? JSON.parse(content)
+    : plainTextToTipTapDoc(extractPlainText(content));
 
 export function ManuscriptEditor({
-  initialContent,
-  sceneTitle,
+  scene,
+  editable,
+  poetry,
+  historical,
+  locateQuote,
+  resumeCursor,
   onSave,
-  onCancel,
+  onDirtyChange,
+  onSelection,
+  onCursor,
+  onEnterEdit,
 }: ManuscriptEditorProps) {
   const { t } = useI18n();
-  const [isDirty, setIsDirty] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const isComposingRef = useRef(false);
-  const editorFileInputRef = useRef<HTMLInputElement>(null);
-
-  // Search & Replace State
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [replaceQuery, setReplaceQuery] = useState("");
-  const [matchCount, setMatchCount] = useState(0);
-
-  const initialDoc = isTipTapDocJson(initialContent)
-    ? JSON.parse(initialContent)
-    : plainTextToTipTapDoc(initialContent || "");
-
+  const [dirty, setDirty] = useState(false),
+    [saving, setSaving] = useState(false),
+    [error, setError] = useState("");
+  const [recovered, setRecovered] = useState(false),
+    [search, setSearch] = useState<string | null>(null);
+  const [replacement, setReplacement] = useState("");
+  const storageKey = `verso:draft:${scene.projectId}:${scene.id}`;
+  const savedRef = useRef(scene.content),
+    baseRef = useRef(scene.currentRevisionId);
+  const dirtyRef = useRef(false),
+    saveRef = useRef<() => Promise<void>>(async () => {});
   const editor = useEditor({
-    editable: true,
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
         codeBlock: false,
       }),
-      Typography,
-      Highlight.configure({
-        multicolor: true,
-      }),
-      CharacterCount,
-      Placeholder.configure({
-        placeholder: t("workbench.editorPlaceholder"),
-      }),
+      Placeholder.configure({ placeholder: t("studio.editorPlaceholder") }),
     ],
-    content: initialDoc,
+    content: documentFrom(scene.content),
+    editable,
     editorProps: {
       attributes: {
-        class: "focus:outline-none min-h-[60vh] prose prose-stone max-w-none text-ink font-serif text-base leading-relaxed p-4",
+        class: "studio-prose",
+        "aria-label": t("studio.manuscript"),
+        role: "textbox",
       },
     },
-    onUpdate: () => {
-      if (!isComposingRef.current) {
-        setIsDirty(true);
+    onUpdate: ({ editor }) => {
+      dirtyRef.current = true;
+      setDirty(true);
+      onDirtyChange(true);
+      if (!historical) {
+        try {
+          localStorage.setItem(
+            storageKey,
+            JSON.stringify({
+              baseRevisionId: baseRef.current,
+              content: JSON.stringify(editor.getJSON()),
+            }),
+          );
+        } catch {
+          setError(t("studio.localDraftError"));
+        }
       }
     },
-  });
-
-  // Track Chinese IME composition
-  useEffect(() => {
-    const handleCompStart = () => {
-      isComposingRef.current = true;
-    };
-    const handleCompEnd = () => {
-      isComposingRef.current = false;
-      setIsDirty(true);
-    };
-
-    const edEl = document.querySelector(".ProseMirror");
-    if (edEl) {
-      edEl.addEventListener("compositionstart", handleCompStart);
-      edEl.addEventListener("compositionend", handleCompEnd);
-    }
-
-    return () => {
-      if (edEl) {
-        edEl.removeEventListener("compositionstart", handleCompStart);
-        edEl.removeEventListener("compositionend", handleCompEnd);
+    onSelectionUpdate: ({ editor }) => {
+      const { from, to } = editor.state.selection;
+      onCursor(from);
+      if (from === to) {
+        onSelection(undefined);
+        return;
       }
-    };
-  }, [editor]);
-
-  // Window beforeunload prompt if unsaved edits
+      const plain = extractPlainText(editor.getJSON());
+      const start = extractPlainText(
+        editor.state.doc.cut(0, from).toJSON(),
+      ).length;
+      const end = extractPlainText(editor.state.doc.cut(0, to).toJSON()).length;
+      const text = plain.slice(start, end);
+      onSelection(text ? { from: start, to: end, text } : undefined);
+    },
+  });
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isDirty) {
+    editor?.setEditable(editable, false);
+  }, [editor, editable]);
+  useEffect(() => {
+    if (!editor) return;
+    if (!dirtyRef.current || historical) {
+      editor.commands.setContent(documentFrom(scene.content), {
+        emitUpdate: false,
+      });
+      savedRef.current = scene.content;
+      baseRef.current = scene.currentRevisionId;
+    }
+  }, [editor, scene.content, scene.currentRevisionId, historical]);
+  useEffect(() => {
+    if (!editor || historical || !editable) return;
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const draft = JSON.parse(stored);
+        if (draft.content !== scene.content) {
+          editor.commands.setContent(documentFrom(draft.content), {
+            emitUpdate: false,
+          });
+          setDirty(true);
+          dirtyRef.current = true;
+          onDirtyChange(true);
+          setRecovered(true);
+          if (draft.baseRevisionId !== scene.currentRevisionId) {
+            baseRef.current = draft.baseRevisionId;
+            setError(t("studio.draftConflict"));
+          }
+        } else localStorage.removeItem(storageKey);
+      }
+    } catch {
+      setError(t("studio.localDraftError"));
+    }
+    if (resumeCursor)
+      editor.commands.setTextSelection(
+        Math.min(resumeCursor, editor.state.doc.content.size),
+      );
+  }, [editor, storageKey, editable]);
+  const save = async () => {
+    if (!editor || saving || !dirty || !editable) return;
+    if (editor.view.composing) return;
+    setSaving(true);
+    setError("");
+    try {
+      // The parent uses this editor's original version, never a newly revalidated
+      // version, as the optimistic lock for a recovered or concurrent draft.
+      const submittedContent = JSON.stringify(editor.getJSON());
+      const updated = await onSave(submittedContent, baseRef.current || "");
+      savedRef.current = updated.content;
+      baseRef.current = updated.currentRevisionId;
+      const changedDuringSave =
+        JSON.stringify(editor.getJSON()) !== submittedContent;
+      setDirty(changedDuringSave);
+      dirtyRef.current = changedDuringSave;
+      onDirtyChange(changedDuringSave);
+      setRecovered(false);
+      if (changedDuringSave)
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            baseRevisionId: baseRef.current,
+            content: JSON.stringify(editor.getJSON()),
+          }),
+        );
+      else localStorage.removeItem(storageKey);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("studio.saveFailed"));
+    } finally {
+      setSaving(false);
+    }
+  };
+  saveRef.current = save;
+  useEffect(() => {
+    const unload = (e: BeforeUnloadEvent) => {
+      if (dirtyRef.current) {
         e.preventDefault();
         e.returnValue = "";
       }
     };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [isDirty]);
-
-  const handleSave = async () => {
-    if (!editor || isSaving) return;
-    setIsSaving(true);
-    setErrorMessage(null);
-
-    try {
-      const json = JSON.stringify(editor.getJSON());
-      await onSave(json, t("workbench.manualEditSaveDescription"));
-      setIsDirty(false);
-    } catch (err: any) {
-      setErrorMessage(err?.message || t("workbench.saveError"));
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    if (isDirty) {
-      const confirmDiscard = window.confirm(t("workbench.unsavedChangesWarning"));
-      if (!confirmDiscard) return;
-    }
-    onCancel();
-  };
-
-  const handleFileImport = async (file: File) => {
-    try {
-      const parsed = await parseUploadedFile(file);
-      if (editor && parsed.content) {
-        editor.commands.setContent(plainTextToTipTapDoc(parsed.content));
-        setIsDirty(true);
+    const shortcut = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void saveRef.current();
       }
-    } catch (err: any) {
-      setErrorMessage(err?.message || t("workbench.importError"));
-    }
-  };
-
-  // Search in editor
-  const handleSearch = useCallback(() => {
-    if (!editor || !searchQuery) {
-      setMatchCount(0);
-      return;
-    }
-    const plain = extractPlainText(editor.getJSON());
-    const count = (plain.match(new RegExp(searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []).length;
-    setMatchCount(count);
-  }, [editor, searchQuery]);
-
+    };
+    window.addEventListener("beforeunload", unload);
+    window.addEventListener("keydown", shortcut);
+    return () => {
+      window.removeEventListener("beforeunload", unload);
+      window.removeEventListener("keydown", shortcut);
+    };
+  }, []);
   useEffect(() => {
-    if (isSearchOpen && searchQuery) {
-      handleSearch();
-    }
-  }, [searchQuery, isSearchOpen, handleSearch]);
-
-  const handleReplaceAll = () => {
-    if (!editor || !searchQuery) return;
-    const plain = extractPlainText(editor.getJSON());
-    const updatedPlain = plain.replaceAll(searchQuery, replaceQuery);
-    editor.commands.setContent(plainTextToTipTapDoc(updatedPlain));
-    setIsDirty(true);
-    setMatchCount(0);
+    if (!editor || !locateQuote) return;
+    const match = findBestAnchorMatch({
+      plainText: extractPlainText(editor.getJSON()),
+      quote: locateQuote,
+    });
+    if (!match.found) return;
+    const textNode = Array.from(
+      editor.view.dom.querySelectorAll("p, h1, h2, h3"),
+    ).find((el) => el.textContent?.includes(locateQuote));
+    textNode?.scrollIntoView({ block: "center", behavior: "smooth" });
+    textNode?.classList.add("studio-located");
+    const timer = window.setTimeout(
+      () => textNode?.classList.remove("studio-located"),
+      3500,
+    );
+    return () => window.clearTimeout(timer);
+  }, [editor, locateQuote]);
+  const discard = () => {
+    editor?.commands.setContent(documentFrom(scene.content), {
+      emitUpdate: false,
+    });
+    baseRef.current = scene.currentRevisionId;
+    savedRef.current = scene.content;
+    localStorage.removeItem(storageKey);
+    dirtyRef.current = false;
+    setDirty(false);
+    onDirtyChange(false);
+    setError("");
+    setRecovered(false);
   };
-
-  if (!editor) return null;
-
+  const replace = () => {
+    if (!editor || !search) return;
+    // Search through text nodes, then replace from the end to preserve all marks,
+    // paragraphs and poem line breaks outside the changed text.
+    const matches: Array<{ from: number; to: number }> = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return;
+      let index = node.text.indexOf(search);
+      while (index >= 0) {
+        matches.push({ from: pos + index, to: pos + index + search.length });
+        index = node.text.indexOf(search, index + search.length);
+      }
+    });
+    const tr = editor.state.tr;
+    for (const match of matches.reverse())
+      replacement
+        ? tr.insertText(replacement, match.from, match.to)
+        : tr.delete(match.from, match.to);
+    editor.view.dispatch(tr);
+  };
   return (
-    <div className="flex-1 flex flex-col h-full bg-paper">
-      {/* Editorial Toolbar */}
-      <div className="border-b border-ink-muted/15 bg-paper/95 px-6 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0 select-none text-xs font-serif sticky top-0 z-20">
-        <div className="flex items-center space-x-1">
-          <button
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            className={`p-1.5 rounded transition-colors ${
-              editor.isActive("bold") ? "bg-ink text-paper" : "text-ink-muted hover:text-ink hover:bg-paper-light"
-            }`}
-            title={t("workbench.bold")}
-          >
-            <b>B</b>
-          </button>
-          <button
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            className={`p-1.5 rounded transition-colors ${
-              editor.isActive("italic") ? "bg-ink text-paper" : "text-ink-muted hover:text-ink hover:bg-paper-light"
-            }`}
-            title={t("workbench.italic")}
-          >
-            <i>I</i>
-          </button>
-          <button
-            onClick={() => editor.chain().focus().toggleStrike().run()}
-            className={`p-1.5 rounded transition-colors ${
-              editor.isActive("strike") ? "bg-ink text-paper" : "text-ink-muted hover:text-ink hover:bg-paper-light"
-            }`}
-            title={t("workbench.strike")}
-          >
-            <s>S</s>
-          </button>
-
-          <div className="h-4 w-px bg-ink-muted/20 mx-1" />
-
-          <button
-            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-            className={`px-2 py-1 rounded transition-colors ${
-              editor.isActive("heading", { level: 2 })
-                ? "bg-ink text-paper"
-                : "text-ink-muted hover:text-ink hover:bg-paper-light"
-            }`}
-            title={t("workbench.h2")}
-          >
-            H2
-          </button>
-          <button
-            onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-            className={`px-2 py-1 rounded transition-colors ${
-              editor.isActive("heading", { level: 3 })
-                ? "bg-ink text-paper"
-                : "text-ink-muted hover:text-ink hover:bg-paper-light"
-            }`}
-            title={t("workbench.h3")}
-          >
-            H3
-          </button>
-          <button
-            onClick={() => editor.chain().focus().toggleBlockquote().run()}
-            className={`px-2 py-1 rounded transition-colors ${
-              editor.isActive("blockquote")
-                ? "bg-ink text-paper"
-                : "text-ink-muted hover:text-ink hover:bg-paper-light"
-            }`}
-            title={t("workbench.blockquote")}
-          >
-            ”
-          </button>
-
-          <div className="h-4 w-px bg-ink-muted/20 mx-1" />
-
-          <button
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            className={`px-2 py-1 rounded transition-colors ${
-              editor.isActive("bulletList")
-                ? "bg-ink text-paper"
-                : "text-ink-muted hover:text-ink hover:bg-paper-light"
-            }`}
-            title={t("workbench.bulletList")}
-          >
-            {t("workbench.bulletListLabel")}
-          </button>
-
-          <div className="h-4 w-px bg-ink-muted/20 mx-1" />
-
-          <button
-            onClick={() => editor.chain().focus().undo().run()}
-            disabled={!editor.can().undo()}
-            className="p-1.5 rounded text-ink-muted hover:text-ink disabled:opacity-30"
-            title={t("workbench.undo")}
-          >
-            ↺
-          </button>
-          <button
-            onClick={() => editor.chain().focus().redo().run()}
-            disabled={!editor.can().redo()}
-            className="p-1.5 rounded text-ink-muted hover:text-ink disabled:opacity-30"
-            title={t("workbench.redo")}
-          >
-            ↻
-          </button>
-
-          <button
-            onClick={() => setIsSearchOpen(!isSearchOpen)}
-            className={`p-1.5 rounded transition-colors ${
-              isSearchOpen ? "bg-cinnabar/10 text-cinnabar" : "text-ink-muted hover:text-ink"
-            }`}
-            title={t("workbench.findAndReplace")}
-          >
-            🔍
-          </button>
-
-          <input
-            ref={editorFileInputRef}
-            type="file"
-            accept=".docx,.txt,.md,.markdown"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFileImport(file);
-              if (e.target) e.target.value = "";
-            }}
-          />
-
-          <button
-            onClick={() => editorFileInputRef.current?.click()}
-            className="p-1.5 rounded text-ink-muted hover:text-ink transition-colors flex items-center space-x-1"
-            title={t("workbench.loadFromFile")}
-          >
-            <span>📥</span>
-            <span className="text-[11px] hidden sm:inline">{t("workbench.loadFromFile")}</span>
-          </button>
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex items-center space-x-2">
-          {isDirty && (
-            <span className="text-[11px] text-cinnabar italic mr-1">
-              {t("workbench.hasUnsavedChanges")}
-            </span>
-          )}
-          <button
-            onClick={handleCancel}
-            disabled={isSaving}
-            className="px-3 py-1 rounded border border-ink-muted/20 text-ink-muted hover:text-ink transition-colors"
-          >
-            {t("common.cancel")}
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={isSaving || !isDirty}
-            className="px-4 py-1 rounded bg-ink text-paper hover:bg-ink/90 font-medium transition-colors shadow-sm disabled:opacity-40"
-          >
-            {isSaving ? t("common.saving") : t("common.save")}
-          </button>
-        </div>
+    <section className={`studio-editor ${poetry ? "studio-poetry" : ""}`}>
+      <div className="studio-editor-toolbar">
+        <span
+          role="status"
+          aria-live="polite"
+          className={dirty ? "text-cinnabar" : "text-ink-muted"}
+        >
+          {saving
+            ? t("common.saving")
+            : dirty
+              ? t("studio.unsaved")
+              : historical
+                ? t("studio.historical")
+                : t("studio.saved")}
+        </span>
+        {editable ? (
+          <div className="studio-actions">
+            <button
+              className="studio-icon-button"
+              aria-label={t("workbench.bold")}
+              aria-pressed={editor?.isActive("bold")}
+              onClick={() => editor?.chain().focus().toggleBold().run()}
+            >
+              <Bold size={15} />
+            </button>
+            <button
+              className="studio-icon-button"
+              aria-label={t("workbench.italic")}
+              aria-pressed={editor?.isActive("italic")}
+              onClick={() => editor?.chain().focus().toggleItalic().run()}
+            >
+              <Italic size={15} />
+            </button>
+            <button
+              className="studio-icon-button"
+              aria-label={t("workbench.blockquote")}
+              onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+            >
+              <Quote size={15} />
+            </button>
+            <button
+              className="studio-icon-button"
+              aria-label={t("workbench.undo")}
+              onClick={() => editor?.chain().focus().undo().run()}
+            >
+              <Undo2 size={15} />
+            </button>
+            <button
+              className="studio-icon-button"
+              aria-label={t("workbench.redo")}
+              onClick={() => editor?.chain().focus().redo().run()}
+            >
+              <Redo2 size={15} />
+            </button>
+            <button
+              className="studio-icon-button"
+              aria-label={t("workbench.findAndReplace")}
+              onClick={() => setSearch(search === null ? "" : null)}
+            >
+              <Search size={15} />
+            </button>
+            {dirty && (
+              <button
+                className="studio-button"
+                disabled={saving}
+                onClick={discard}
+              >
+                {t("studio.discard")}
+              </button>
+            )}
+            <button
+              className="studio-button studio-primary"
+              disabled={!dirty || saving}
+              onClick={save}
+            >
+              <Save size={14} />
+              {t("common.save")}
+            </button>
+          </div>
+        ) : (
+          !historical && (
+            <button className="studio-button" onClick={onEnterEdit}>
+              <Pencil size={14} />
+              {t("studio.write")}
+            </button>
+          )
+        )}
       </div>
-
-      {/* Search and Replace Bar */}
-      {isSearchOpen && (
-        <div className="border-b border-ink-muted/15 bg-paper-light px-6 py-2 flex items-center space-x-3 text-xs font-serif">
+      {search !== null && (
+        <div className="studio-search">
           <input
-            type="text"
-            placeholder={t("workbench.findPlaceholder")}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="px-2.5 py-1 bg-paper border border-ink-muted/25 rounded text-ink text-xs focus:outline-none focus:border-ink w-48"
+            aria-label={t("studio.find")}
+            placeholder={t("studio.find")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
           <input
-            type="text"
-            placeholder={t("workbench.replacePlaceholder")}
-            value={replaceQuery}
-            onChange={(e) => setReplaceQuery(e.target.value)}
-            className="px-2.5 py-1 bg-paper border border-ink-muted/25 rounded text-ink text-xs focus:outline-none focus:border-ink w-48"
+            aria-label={t("studio.replaceWith")}
+            placeholder={t("studio.replaceWith")}
+            value={replacement}
+            onChange={(e) => setReplacement(e.target.value)}
           />
-          {searchQuery && (
-            <span className="text-[11px] text-ink-muted">
-              {t("workbench.matchCount", { count: matchCount })}
-            </span>
-          )}
-          <button
-            onClick={handleReplaceAll}
-            disabled={matchCount === 0}
-            className="px-2.5 py-1 rounded border border-ink-muted/20 text-ink hover:bg-paper disabled:opacity-40"
-          >
-            {t("workbench.replaceAll")}
+          <button className="studio-button" onClick={replace}>
+            {t("studio.replaceAll")}
           </button>
           <button
-            onClick={() => setIsSearchOpen(false)}
-            className="text-ink-muted hover:text-ink p-1 ml-auto"
+            className="studio-icon-button"
+            aria-label={t("common.close")}
+            onClick={() => setSearch(null)}
           >
-            ✕
+            <X size={14} />
           </button>
         </div>
       )}
-
-      {/* Error Alert */}
-      {errorMessage && (
-        <div className="bg-cinnabar/10 border-b border-cinnabar/20 px-6 py-2 text-xs text-cinnabar font-serif flex items-center justify-between">
-          <span>{errorMessage}</span>
-          <button onClick={() => setErrorMessage(null)} className="font-bold">✕</button>
+      {error && (
+        <p role="alert" className="studio-alert">
+          {error}
+        </p>
+      )}
+      {dirty && baseRef.current !== scene.currentRevisionId && (
+        <div className="studio-conflict-review">
+          <details>
+            <summary>{t("studio.compareSavedDraft")}</summary>
+            <DiffViewer
+              originalText={extractPlainText(scene.content)}
+              replacementText={editor ? extractPlainText(editor.getJSON()) : ""}
+            />
+          </details>
+          <button
+            className="studio-button"
+            disabled={saving}
+            onClick={() => {
+              if (window.confirm(t("studio.replaceLatestConfirm"))) {
+                baseRef.current = scene.currentRevisionId;
+                void saveRef.current();
+              }
+            }}
+          >
+            {t("studio.saveAgainstLatest")}
+          </button>
         </div>
       )}
-
-      {/* Main TipTap Editable Canvas */}
-      <div className="flex-1 overflow-y-auto p-8 max-w-3xl mx-auto w-full">
-        <h2 className="font-serif text-xl font-medium text-ink tracking-tight mb-4 pb-2 border-b border-ink-muted/10">
-          {sceneTitle || t("workbench.untitledScene")}
-        </h2>
+      {recovered && <p className="studio-note">{t("studio.recovered")}</p>}
+      <div className="studio-page">
+        <div className="studio-page-heading">
+          <h2>{scene.title}</h2>
+          <span>{t("studio.chapter")}</span>
+        </div>
         <EditorContent editor={editor} />
       </div>
-    </div>
+    </section>
   );
 }
-

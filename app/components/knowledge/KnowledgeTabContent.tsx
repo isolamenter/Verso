@@ -1,240 +1,425 @@
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { Plus, Upload, Pencil, Archive } from "lucide-react";
 import { useI18n } from "../../i18n";
-import { KnowledgeNodeCard } from "./KnowledgeNodeCard";
-import { CreateKnowledgeModal } from "./CreateKnowledgeModal";
+import { api } from "../../utils/api";
+import { StudioDialog } from "../workbench/StudioDialog";
 import { MediaAssetList, type MediaAssetDetail } from "./media/MediaAssetList";
-import { AssetUploadModal } from "./media/AssetUploadModal";
-import type { KnowledgeNode, KnowledgeKind } from "../../../shared/schemas/knowledge";
+import type {
+  KnowledgeNode,
+  KnowledgeRelation,
+} from "../../../shared/schemas/knowledge";
+import type { Scene } from "../../../shared/schemas/project";
 
 export interface KnowledgeTabContentProps {
   projectId: string;
+  scenes: Scene[];
+  confirmed: boolean;
+  onProcessing: () => void;
 }
-
-export function KnowledgeTabContent({ projectId }: KnowledgeTabContentProps) {
+interface Library {
+  nodes: KnowledgeNode[];
+  relations: KnowledgeRelation[];
+  sources: Array<{ nodeId: string; assetId: string; filename: string }>;
+}
+function noteRole(node: KnowledgeNode) {
+  return node.status === "draft"
+    ? "pending"
+    : node.metadata.role ||
+        ([
+          "research_note",
+          "reference_document",
+          "image_reference",
+          "audio_reference",
+          "video_reference",
+          "voice_reference",
+        ].includes(node.kind)
+          ? "material"
+          : "setting");
+}
+export function KnowledgeTabContent({
+  projectId,
+  scenes,
+  confirmed,
+  onProcessing,
+}: KnowledgeTabContentProps) {
   const { t } = useI18n();
-
-  const categories: Array<{ key: string; label: string }> = [
-    { key: "all", label: t("knowledge.catAll") },
-    { key: "character", label: t("knowledge.catCharacter") },
-    { key: "world_rule", label: t("knowledge.catWorldRule") },
-    { key: "location", label: t("knowledge.catLocation") },
-    { key: "theme", label: t("knowledge.catTheme") },
-    { key: "timeline", label: t("knowledge.catTimeline") },
-    { key: "media", label: t("knowledge.catMedia") },
-    { key: "custom", label: t("knowledge.catCustom") },
-  ];
-
-  const [nodes, setNodes] = useState<KnowledgeNode[]>([]);
-  const [assets, setAssets] = useState<MediaAssetDetail[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState<string>("all");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [editingNode, setEditingNode] = useState<KnowledgeNode | null>(null);
-
-  const loadKnowledge = useCallback(async () => {
+  const [library, setLibrary] = useState<Library>({
+      nodes: [],
+      relations: [],
+      sources: [],
+    }),
+    [assets, setAssets] = useState<MediaAssetDetail[]>([]),
+    [tab, setTab] = useState("setting"),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<KnowledgeNode | null | undefined>(),
+    [upload, setUpload] = useState(false);
+  const load = useCallback(async () => {
     try {
-      setIsLoading(true);
-      const [knowRes, assetRes] = await Promise.all([
-        fetch(`/api/projects/${projectId}/knowledge`),
-        fetch(`/api/projects/${projectId}/assets`),
+      const [notes, media] = await Promise.all([
+        api<Library>(`/api/projects/${projectId}/knowledge`),
+        api<{ items: MediaAssetDetail[] }>(`/api/projects/${projectId}/assets`),
       ]);
-
-      if (knowRes.ok) {
-        const data = await knowRes.json();
-        if (Array.isArray(data.nodes)) {
-          setNodes(data.nodes);
-        }
-      }
-
-      if (assetRes.ok) {
-        const assetData = await assetRes.json();
-        if (Array.isArray(assetData.items)) {
-          setAssets(assetData.items);
-        }
-      }
+      setLibrary(notes);
+      setAssets(media.items);
     } catch (err) {
-      console.error("Failed to load knowledge & assets:", err);
+      setError((err as Error).message);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   }, [projectId]);
-
   useEffect(() => {
-    loadKnowledge();
-  }, [loadKnowledge]);
-
-  const handleCreateOrUpdate = async (data: {
-    kind: KnowledgeKind;
-    title: string;
-    content: string;
-    summary?: string;
-    language?: string;
-  }) => {
-    const formData = new FormData();
-    formData.append("intent", editingNode ? "update_node" : "create_node");
-    if (editingNode) formData.append("nodeId", editingNode.id);
-    formData.append("kind", data.kind);
-    formData.append("title", data.title);
-    formData.append("content", data.content);
-    if (data.summary) formData.append("summary", data.summary);
-
-    const res = await fetch(`/api/projects/${projectId}/knowledge`, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (res.ok) {
-      await loadKnowledge();
-    }
-  };
-
-  const handleArchive = async (nodeId: string) => {
-    const formData = new FormData();
-    formData.append("intent", "archive_node");
-    formData.append("nodeId", nodeId);
-
-    const res = await fetch(`/api/projects/${projectId}/knowledge`, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (res.ok) {
-      await loadKnowledge();
-    }
-  };
-
-  const handleUploadAsset = async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const res = await fetch(`/api/projects/${projectId}/assets`, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (res.ok) {
-      await loadKnowledge();
-    }
-  };
-
-  const handleRetryAsset = async (assetId: string) => {
-    const res = await fetch(`/api/projects/${projectId}/assets/${assetId}/retry`, {
-      method: "POST",
-    });
-
-    if (res.ok) {
-      await loadKnowledge();
-    }
-  };
-
-  const filteredNodes =
-    activeCategory === "all"
-      ? nodes
-      : nodes.filter((n) => n.kind === activeCategory);
-
-  if (isLoading) {
-    return (
-      <div className="flex-1 p-8 text-center text-xs text-ink-muted font-serif animate-pulse">
-        {t("knowledge.loadingKnowledge")}
-      </div>
-    );
-  }
-
+    void load();
+  }, [load]);
+  const conflicts = library.relations.filter(
+    (r) => r.relationType === "conflicts_with",
+  );
   return (
-    <div className="flex-1 flex flex-col h-full bg-paper font-serif overflow-hidden">
-      {/* Top Header & Categories */}
-      <div className="p-4 border-b border-ink-muted/15 flex flex-wrap items-center justify-between gap-3 shrink-0 bg-paper/95 text-xs">
-        <div className="flex items-center space-x-1.5 overflow-x-auto pb-1">
-          {categories.map((cat) => {
-            let count = 0;
-            if (cat.key === "all") count = nodes.length;
-            else if (cat.key === "media") count = assets.length;
-            else count = nodes.filter((n) => n.kind === cat.key).length;
-
-            return (
-              <button
-                key={cat.key}
-                onClick={() => setActiveCategory(cat.key)}
-                className={`px-2.5 py-1 rounded text-xs transition-colors shrink-0 ${
-                  activeCategory === cat.key
-                    ? "bg-ink text-paper font-medium"
-                    : "text-ink-muted hover:text-ink bg-paper-light"
-                }`}
-              >
-                {cat.label} ({count})
-              </button>
-            );
-          })}
+    <section className="studio-knowledge">
+      <header className="studio-section-heading">
+        <div>
+          <h2>{t("studio.knowledge")}</h2>
+          <p>{t("studio.notesHelp")}</p>
         </div>
-
-        <div className="flex items-center space-x-2 shrink-0">
+        <div className="studio-actions">
           <button
-            onClick={() => setIsUploadModalOpen(true)}
-            className="px-3 py-1.5 bg-paper-light border border-ink-muted/25 rounded text-xs font-medium text-ink hover:bg-paper shadow-2xs transition-colors"
+            className="studio-button"
+            onClick={() => (confirmed ? setUpload(true) : onProcessing())}
           >
+            <Upload size={14} />
             {t("knowledge.uploadMediaFile")}
           </button>
           <button
-            onClick={() => {
-              setEditingNode(null);
-              setIsModalOpen(true);
-            }}
-            className="px-3 py-1.5 bg-ink text-paper rounded text-xs font-medium hover:bg-ink/90 shadow-xs transition-colors"
+            className="studio-button studio-primary"
+            onClick={() => setEditing(null)}
           >
-            {t("knowledge.addKnowledgeNode")}
+            <Plus size={14} />
+            {t("studio.addNote")}
           </button>
         </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {activeCategory === "media" ? (
+      </header>
+      <nav className="studio-knowledge-tabs">
+        {(
+          [
+            ["setting", "studio.settingsTab"],
+            ["material", "studio.materialsTab"],
+            ["pending", "studio.pendingTab"],
+            ["media", "studio.media"],
+          ] as const
+        ).map(([id, key]) => (
+          <button
+            key={id}
+            className={`studio-button ${tab === id ? "is-active" : ""}`}
+            onClick={() => setTab(id)}
+          >
+            {t(key)}
+          </button>
+        ))}
+      </nav>
+      {error && (
+        <p role="alert" className="studio-alert">
+          {error}
+        </p>
+      )}
+      {conflicts.map((relation) => (
+        <div className="studio-knowledge-conflict" key={relation.id}>
+          <strong>
+            {library.nodes.find((n) => n.id === relation.sourceNodeId)?.title} /{" "}
+            {library.nodes.find((n) => n.id === relation.targetNodeId)?.title}
+          </strong>
+          <p>{relation.description || t("studio.conflictHelp")}</p>
+        </div>
+      ))}
+      {loading ? (
+        <p>{t("studio.loading")}</p>
+      ) : tab === "media" ? (
+        <>
+          <div className="studio-help">
+            {assets.map((item) => (
+              <p key={item.asset.id}>
+                <a
+                  className="studio-source-link"
+                  href={`/api/projects/${projectId}/assets/${item.asset.id}/file`}
+                >
+                  {item.asset.originalFileName} — {t("studio.originalFile")}
+                </a>
+              </p>
+            ))}
+          </div>
           <MediaAssetList
             assets={assets}
-            onRetry={handleRetryAsset}
-            onUploadClick={() => setIsUploadModalOpen(true)}
+            onRetry={async (id) => {
+              if (!confirmed) {
+                onProcessing();
+                return;
+              }
+              const response = await fetch(
+                `/api/projects/${projectId}/assets/${id}/retry`,
+                { method: "POST" },
+              );
+              const data = await response.json();
+              if (!response.ok || data.error) {
+                setError(data.error);
+                return;
+              }
+              await load();
+            }}
+            onUploadClick={() => (confirmed ? setUpload(true) : onProcessing())}
           />
-        ) : filteredNodes.length === 0 ? (
-          <div className="text-center py-12 text-ink-muted space-y-2">
-            <div className="text-2xl">📚</div>
-            <p className="text-xs">
-              {activeCategory === "all" ? t("knowledge.emptyLibrary") : t("knowledge.emptyCategory")}
-            </p>
-          </div>
-        ) : (
-          filteredNodes.map((node) => (
-            <KnowledgeNodeCard
-              key={node.id}
-              node={node}
-              onEdit={(n) => {
-                setEditingNode(n);
-                setIsModalOpen(true);
-              }}
-              onArchive={handleArchive}
-            />
-          ))
-        )}
-      </div>
-
-      {/* Create/Edit Modal */}
-      <CreateKnowledgeModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingNode(null);
-        }}
-        onSubmit={handleCreateOrUpdate}
-        initialNode={editingNode}
-      />
-
-      {/* Upload Modal */}
-      <AssetUploadModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        onUpload={handleUploadAsset}
-      />
-    </div>
+        </>
+      ) : (
+        <>
+          {!library.nodes.some((node) => noteRole(node) === tab) && (
+            <p className="studio-help">{t("studio.noNotes")}</p>
+          )}
+          {library.nodes
+            .filter((node) => noteRole(node) === tab)
+            .map((node) => (
+              <article className="studio-knowledge-item" key={node.id}>
+                <div className="studio-section-heading">
+                  <h3>{node.title}</h3>
+                  <div className="studio-actions">
+                    <button
+                      className="studio-icon-button"
+                      aria-label={t("common.edit")}
+                      onClick={() => setEditing(node)}
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      className="studio-icon-button"
+                      aria-label={t("common.archived")}
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await api(`/api/projects/${projectId}/knowledge`, {
+                            intent: "archive_node",
+                            nodeId: node.id,
+                          });
+                          await load();
+                        } catch (err) {
+                          setError((err as Error).message);
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      <Archive size={15} />
+                    </button>
+                  </div>
+                </div>
+                <div className="studio-knowledge-meta">
+                  <span>
+                    {node.sceneId
+                      ? scenes.find((s) => s.id === node.sceneId)?.title
+                      : t("studio.wholeWorkScope")}
+                  </span>
+                  <span>{node.authority}</span>
+                  {Boolean(node.metadata.conditions) && (
+                    <span>{String(node.metadata.conditions)}</span>
+                  )}
+                </div>
+                <p>{node.content}</p>
+                {Boolean(node.metadata.source) && (
+                  <p className="studio-help">
+                    {t("studio.source")}: {String(node.metadata.source)}{" "}
+                    {String(node.metadata.sourceLocator || "")}
+                  </p>
+                )}
+                {library.sources
+                  .filter((source) => source.nodeId === node.id)
+                  .map((source) => (
+                    <a
+                      className="studio-source-link"
+                      key={source.assetId}
+                      href={`/api/projects/${projectId}/assets/${source.assetId}/file`}
+                    >
+                      {source.filename} — {t("studio.originalFile")}
+                    </a>
+                  ))}
+              </article>
+            ))}
+        </>
+      )}
+      {editing !== undefined && (
+        <StudioDialog
+          title={t(editing ? "common.edit" : "studio.addNote")}
+          onClose={() => setEditing(undefined)}
+        >
+          <form
+            className="studio-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const form = new FormData(e.currentTarget);
+              setBusy(true);
+              try {
+                await api(`/api/projects/${projectId}/knowledge`, {
+                  intent: editing ? "update_node" : "create_node",
+                  nodeId: editing?.id,
+                  title: form.get("title"),
+                  content: form.get("content"),
+                  kind: form.get("kind"),
+                  role: form.get("role"),
+                  source: form.get("source"),
+                  sourceLocator: form.get("sourceLocator"),
+                  conditions: form.get("conditions"),
+                  sceneId: form.get("sceneId") || undefined,
+                  confirmed: form.get("confirmed") === "on",
+                });
+                await load();
+                setEditing(undefined);
+              } catch (err) {
+                setError((err as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <label>
+              {t("studio.title")}
+              <input name="title" defaultValue={editing?.title} required />
+            </label>
+            <label>
+              {t("studio.noteRole")}
+              <select
+                name="role"
+                defaultValue={
+                  editing
+                    ? String(editing.metadata.role || noteRole(editing))
+                    : tab === "media"
+                      ? "material"
+                      : tab
+                }
+              >
+                <option value="setting">{t("studio.settingsTab")}</option>
+                <option value="material">{t("studio.materialsTab")}</option>
+                <option value="pending">{t("studio.pendingTab")}</option>
+              </select>
+            </label>
+            <label>
+              {t("studio.method")}
+              <select name="kind" defaultValue={editing?.kind || "custom"}>
+                {(
+                  [
+                    ["custom", "knowledge.catCustom"],
+                    ["character", "knowledge.catCharacter"],
+                    ["world_rule", "knowledge.catWorldRule"],
+                    ["location", "knowledge.catLocation"],
+                    ["theme", "knowledge.catTheme"],
+                    ["timeline", "knowledge.catTimeline"],
+                    ["research_note", "studio.materialsTab"],
+                  ] as const
+                ).map(([id, key]) => (
+                  <option key={id} value={id}>
+                    {t(key)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {t("studio.noteContent")}
+              <textarea
+                name="content"
+                defaultValue={editing?.content}
+                rows={5}
+              />
+            </label>
+            <label>
+              {t("studio.noteScope")}
+              <select name="sceneId" defaultValue={editing?.sceneId || ""}>
+                <option value="">{t("studio.wholeWorkScope")}</option>
+                {scenes.map((scene) => (
+                  <option key={scene.id} value={scene.id}>
+                    {scene.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {t("studio.conditions")}
+              <input
+                name="conditions"
+                defaultValue={String(editing?.metadata.conditions || "")}
+              />
+            </label>
+            <label>
+              {t("studio.source")}
+              <input
+                name="source"
+                placeholder={t("studio.sourcePlaceholder")}
+                defaultValue={String(editing?.metadata.source || "")}
+              />
+            </label>
+            <label>
+              {t("studio.sourceLocator")}
+              <input
+                name="sourceLocator"
+                placeholder={t("studio.sourceLocatorPlaceholder")}
+                defaultValue={String(editing?.metadata.sourceLocator || "")}
+              />
+            </label>
+            <label className="studio-checkbox">
+              <input
+                name="confirmed"
+                type="checkbox"
+                defaultChecked={!editing || editing.status === "active"}
+              />
+              {t("studio.noteConfirmed")}
+            </label>
+            {error && (
+              <p role="alert" className="studio-alert">
+                {error}
+              </p>
+            )}
+            <button className="studio-button studio-primary" disabled={busy}>
+              {t("common.save")}
+            </button>
+          </form>
+        </StudioDialog>
+      )}
+      {upload && (
+        <StudioDialog
+          title={t("knowledge.uploadModalTitle")}
+          onClose={() => setUpload(false)}
+        >
+          <form
+            className="studio-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              try {
+                const form = new FormData(e.currentTarget);
+                const response = await fetch(
+                  `/api/projects/${projectId}/assets`,
+                  { method: "POST", body: form },
+                );
+                const data = await response.json();
+                if (!response.ok || data.error)
+                  throw new Error(data.error || t("studio.sendFailed"));
+                await load();
+                setUpload(false);
+              } catch (err) {
+                setError((err as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <p className="studio-help">{t("studio.uploadHelp")}</p>
+            <input type="file" name="file" required />
+            {error && (
+              <p role="alert" className="studio-alert">
+                {error}
+              </p>
+            )}
+            <button className="studio-button studio-primary" disabled={busy}>
+              {t("knowledge.confirmUpload")}
+            </button>
+          </form>
+        </StudioDialog>
+      )}
+    </section>
   );
 }
-

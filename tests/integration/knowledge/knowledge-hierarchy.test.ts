@@ -79,7 +79,8 @@ describe("E14 — Text Knowledge Hierarchy and Knowledge Change Sets", () => {
 
     const createReq = new Request("http://127.0.0.1:4173/api/projects/p/knowledge", {
       method: "POST",
-      body: createForm,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intent: "create_node", kind: "location", title: "万梅山庄", content: "西门吹雪隐居之所，庄外梅花千树。", role: "setting", source: "作者", sourceLocator: "", conditions: "", confirmed: true }),
     });
 
     const createRes = (await knowledgeAction({
@@ -107,7 +108,8 @@ describe("E14 — Text Knowledge Hierarchy and Knowledge Change Sets", () => {
 
     const updateReq = new Request("http://127.0.0.1:4173/api/projects/p/knowledge", {
       method: "POST",
-      body: updateForm,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intent: "update_node", nodeId: createdId, kind: "location", title: "万梅山庄", content: "万梅山庄，雪落梅开，剑气凌厉。", role: "setting", source: "作者", sourceLocator: "", conditions: "", confirmed: true }),
     });
 
     const updateRes = (await knowledgeAction({
@@ -125,7 +127,8 @@ describe("E14 — Text Knowledge Hierarchy and Knowledge Change Sets", () => {
 
     const archiveReq = new Request("http://127.0.0.1:4173/api/projects/p/knowledge", {
       method: "POST",
-      body: archiveForm,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intent: "archive_node", nodeId: createdId }),
     });
 
     const archiveRes = (await knowledgeAction({

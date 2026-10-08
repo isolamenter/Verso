@@ -2,6 +2,7 @@ import {
   projectRepository,
   knowledgeRepository,
   memoryRepository,
+  memoryService,
   manuscriptService,
 } from "../../domain";
 import { extractPlainText } from "../../../shared/manuscript";
@@ -17,6 +18,7 @@ import type {
   CompareRevisionsInput,
   QueryMemoryInput,
 } from "../../../shared/schemas/tools";
+import type { TaskSnapshot } from "../../../shared/schemas/task";
 import type { KnowledgeAsset, MemoryEntry } from "../../../shared/schemas";
 
 export interface ToolExecutionContext {
@@ -25,8 +27,39 @@ export interface ToolExecutionContext {
   threadId: string;
   receiptBuilder?: ContextReceiptBuilder;
   isColdReader?: boolean;
+  task?: TaskSnapshot;
+  allowedKnowledgeKinds?: string[];
 }
 
+function allowsNode(
+  node: import("../../../shared/schemas/knowledge").KnowledgeNode,
+  ctx: ToolExecutionContext,
+) {
+  if (node.status !== "active") return false;
+  if (
+    ctx.allowedKnowledgeKinds?.length &&
+    !ctx.allowedKnowledgeKinds.includes(node.kind)
+  )
+    return false;
+  if (ctx.task) {
+    if (!ctx.task.useKnowledge) return false;
+    if (
+      !ctx.task.useMedia &&
+      ["image_reference", "audio_reference", "video_reference"].includes(
+        node.kind,
+      )
+    )
+      return false;
+    if (node.sceneId && !ctx.task.scenes.some((s) => s.id === node.sceneId))
+      return false;
+    if (
+      node.manuscriptId &&
+      !ctx.task.scenes.some((s) => s.manuscriptId === node.manuscriptId)
+    )
+      return false;
+  }
+  return true;
+}
 export class ReadToolsEngine {
   /**
    * 1. list_resources
@@ -43,7 +76,14 @@ export class ReadToolsEngine {
     }> = [];
 
     if (input.type === "all" || input.type === "scene") {
-      const scenes = await projectRepository.listScenesByProject(ctx.projectId);
+      const scenes = ctx.task
+        ? ctx.task.scenes.map((s) => ({
+            ...s,
+            content: s.text.slice(s.from, s.to),
+            updatedAt: "",
+            currentRevisionId: s.revisionId,
+          }))
+        : await projectRepository.listScenesByProject(ctx.projectId);
       for (const sc of scenes.slice(0, input.limit)) {
         results.push({
           id: sc.id,
@@ -56,10 +96,13 @@ export class ReadToolsEngine {
 
     if (
       !ctx.isColdReader &&
+      (ctx.task?.useKnowledge ?? true) &&
       (input.type === "all" || input.type === "knowledge")
     ) {
       const nodes = await knowledgeRepository.listNodesByProject(ctx.projectId);
-      for (const kn of nodes.slice(0, input.limit)) {
+      for (const kn of nodes
+        .filter((n) => allowsNode(n, ctx))
+        .slice(0, input.limit)) {
         results.push({
           id: kn.id,
           type: "knowledge",
@@ -71,12 +114,15 @@ export class ReadToolsEngine {
 
     if (
       !ctx.isColdReader &&
+      (ctx.task?.useMemory ?? true) &&
       (input.type === "all" || input.type === "memory")
     ) {
       const memories = await memoryRepository.listMemoryEntriesByProject(
         ctx.projectId,
       );
-      for (const m of memories.slice(0, input.limit)) {
+      for (const m of memories
+        .filter((m) => m.status === "active")
+        .slice(0, input.limit)) {
         results.push({
           id: m.id,
           type: "memory",
@@ -102,62 +148,67 @@ export class ReadToolsEngine {
   public async readFullManuscript(
     projectId: string,
     opts?: { offset?: number; maxLength?: number; manuscriptId?: string },
+    ctx?: ToolExecutionContext,
   ) {
-    const offset = opts?.offset ?? 0;
-    const maxLen = opts?.maxLength ?? 100000;
-    let scenes: Array<any>;
-    // 优先按 manuscriptId 过滤，否则返回全项目拼接
-    if (opts?.manuscriptId) {
-      const msList =
-        await manuscriptService.listManuscriptsWithScenes(projectId);
-      const target = msList.find((m) => m.id === opts.manuscriptId);
-      scenes = target ? target.scenes : [];
-    } else {
-      const all = await projectRepository.listScenesByProject(projectId);
-      scenes = all;
+    const source = ctx?.task
+      ? ctx.task.scenes
+      : (await manuscriptService.listManuscriptsWithScenes(projectId))
+          .flatMap((m) => m.scenes)
+          .map((s) => ({
+            ...s,
+            revisionId: s.currentRevisionId,
+            text: extractPlainText(s.content),
+            from: 0,
+            to: extractPlainText(s.content).length,
+          }));
+    if (
+      opts?.manuscriptId &&
+      !source.some((s) => s.manuscriptId === opts.manuscriptId)
+    )
+      return { error: "文稿不在本轮范围内" };
+    const scenes = source.filter(
+      (s) => !opts?.manuscriptId || s.manuscriptId === opts.manuscriptId,
+    );
+    const full = scenes.map((s) => s.text.slice(s.from, s.to)).join("\n\n");
+    const start = Math.min(Math.max(0, opts?.offset ?? 0), full.length);
+    const end = Math.min(
+      start + Math.max(0, opts?.maxLength ?? 12000),
+      full.length,
+    );
+    let cursor = 0;
+    for (const scene of scenes) {
+      const length = scene.to - scene.from;
+      const from = Math.max(start, cursor),
+        to = Math.min(end, cursor + length);
+      if (to > from || length === 0)
+        ctx?.receiptBuilder?.recordItem({
+          resourceType: "scene",
+          resourceId: scene.id,
+          revisionId: scene.revisionId || undefined,
+          inclusionMode:
+            from === cursor && to === cursor + length ? "full" : "excerpt",
+          excerptLength: Math.max(0, to - from),
+          locator: {
+            from: scene.from + from - cursor,
+            to: scene.from + to - cursor,
+          },
+        });
+      cursor += length + 2;
     }
-    if (!scenes || scenes.length === 0) {
-      return {
-        id: opts?.manuscriptId || projectId,
-        type: "manuscript",
-        title: "空文稿",
-        content: "",
-        characterCount: 0,
-        isTruncated: false,
-        sceneCount: 0,
-        scenes: [],
-      };
-    }
-    const parts: string[] = [];
-    const sceneMeta: Array<{
-      id: string;
-      title: string;
-      characterCount: number;
-    }> = [];
-    for (const sc of scenes) {
-      const plain = extractPlainText(sc.content);
-      parts.push(plain);
-      sceneMeta.push({
-        id: sc.id,
-        title: sc.title || "未命名场景",
-        characterCount: plain.length,
-      });
-    }
-    const full = parts.join("\n\n");
-    const sliceStart = Math.min(Math.max(0, offset), full.length);
-    const sliceEnd = Math.min(sliceStart + maxLen, full.length);
-    const truncated = full.slice(sliceStart, sliceEnd);
-    const isTruncated = sliceEnd < full.length || sliceStart > 0;
     return {
       id: opts?.manuscriptId || projectId,
-      type: "manuscript" as const,
-      title: "全文拼接",
-      content: truncated,
-      offset: sliceStart,
+      type: "manuscript",
+      content: full.slice(start, end),
+      offset: start,
+      nextOffset: end,
       characterCount: full.length,
-      isTruncated,
+      isTruncated: end < full.length,
       sceneCount: scenes.length,
-      scenes: sceneMeta,
+      scenes: scenes.map((s) => ({
+        id: s.id,
+        title: s.title,
+        revisionId: s.revisionId,
+      })),
     };
   }
 
@@ -170,29 +221,37 @@ export class ReadToolsEngine {
     const maxLen = input.maxLength ?? 100000;
 
     if (type === "manuscript") {
-      // id 可能是 manuscriptId，也可能是 projectId（语义：读全项目）
-      const msList = await manuscriptService.listManuscriptsWithScenes(
+      if (
+        id !== ctx.projectId &&
+        !(ctx.task
+          ? ctx.task.scenes.some((s) => s.manuscriptId === id)
+          : (
+              await projectRepository.listManuscriptsByProject(ctx.projectId)
+            ).some((m) => m.id === id))
+      )
+        return { error: "文稿不属于本作品或本轮范围" };
+      return this.readFullManuscript(
         ctx.projectId,
+        {
+          offset,
+          maxLength: maxLen,
+          manuscriptId: id === ctx.projectId ? undefined : id,
+        },
+        ctx,
       );
-      // 尝试按 manuscriptId 匹配，否则回退为全项目拼接
-      const matched = msList.find((m) => m.id === id);
-      const result = await this.readFullManuscript(ctx.projectId, {
-        offset,
-        maxLength: maxLen,
-        manuscriptId: matched ? id : undefined,
-      });
-      ctx.receiptBuilder?.recordItem({
-        resourceType: "scene",
-        resourceId: result.id,
-        inclusionMode: result.isTruncated ? "excerpt" : "full",
-        excerptLength: result.content.length,
-        reason: "Read full manuscript (aggregated)",
-      });
-      return result;
     }
 
     if (type === "scene") {
-      const scene = await manuscriptService.getSceneById(id, ctx.projectId);
+      const snapshot = ctx.task?.scenes.find((s) => s.id === id);
+      if (ctx.task && !snapshot)
+        return { error: "章节不在本轮允许参考的范围内" };
+      const scene = snapshot
+        ? {
+            ...snapshot,
+            content: snapshot.text,
+            currentRevisionId: snapshot.revisionId,
+          }
+        : await manuscriptService.getSceneById(id, ctx.projectId);
       if (!scene) {
         return {
           error: `Scene not found or unauthorized in project ${ctx.projectId}`,
@@ -200,10 +259,16 @@ export class ReadToolsEngine {
       }
 
       const plain = extractPlainText(scene.content);
-      const sliceStart = Math.min(Math.max(0, offset), plain.length);
-      const sliceEnd = Math.min(sliceStart + maxLen, plain.length);
+      const sliceStart = Math.min(
+        Math.max(snapshot?.from ?? 0, offset),
+        snapshot?.to ?? plain.length,
+      );
+      const sliceEnd = Math.min(
+        sliceStart + maxLen,
+        snapshot?.to ?? plain.length,
+      );
       const truncated = plain.slice(sliceStart, sliceEnd);
-      const isTruncated = sliceEnd < plain.length || sliceStart > 0;
+      const isTruncated = sliceEnd < (snapshot?.to ?? plain.length);
 
       ctx.receiptBuilder?.recordItem({
         resourceType: "scene",
@@ -212,6 +277,7 @@ export class ReadToolsEngine {
         revisionId: scene.currentRevisionId || undefined,
         excerptLength: truncated.length,
         reason: "Read by agent tool",
+        locator: { from: sliceStart, to: sliceEnd },
       });
 
       return {
@@ -220,20 +286,23 @@ export class ReadToolsEngine {
         title: scene.title,
         content: truncated,
         offset: sliceStart,
+        nextOffset: sliceEnd,
+        allowedFrom: snapshot?.from ?? 0,
+        allowedTo: snapshot?.to ?? plain.length,
         characterCount: plain.length,
         isTruncated,
       };
     }
 
     if (type === "knowledge") {
-      if (ctx.isColdReader) {
+      if (ctx.isColdReader || (ctx.task && !ctx.task.useKnowledge)) {
         return {
-          error: "Cold Reader policy prohibits reading external knowledge",
+          error: "本轮不允许读取设定和素材",
         };
       }
 
       const node = await knowledgeRepository.getNodeById(id);
-      if (!node || node.projectId !== ctx.projectId) {
+      if (!node || node.projectId !== ctx.projectId || !allowsNode(node, ctx)) {
         return {
           error: `Knowledge node not found or unauthorized in project ${ctx.projectId}`,
         };
@@ -250,6 +319,11 @@ export class ReadToolsEngine {
         resourceId: id,
         inclusionMode: isTruncated ? "excerpt" : "full",
         excerptLength: truncated.length,
+        locator: {
+          title: node.title,
+          source: node.metadata.source,
+          sourceLocator: node.metadata.sourceLocator,
+        },
       });
 
       return {
@@ -257,6 +331,13 @@ export class ReadToolsEngine {
         type: "knowledge",
         title: node.title,
         kind: node.kind,
+        authority: node.authority,
+        sceneId: node.sceneId,
+        manuscriptId: node.manuscriptId,
+        role: node.metadata.role,
+        source: node.metadata.source,
+        sourceLocator: node.metadata.sourceLocator,
+        conditions: node.metadata.conditions,
         content: truncated,
         offset: sliceStart,
         characterCount: plain.length,
@@ -265,12 +346,16 @@ export class ReadToolsEngine {
     }
 
     if (type === "memory") {
-      if (ctx.isColdReader) {
-        return { error: "Cold Reader policy prohibits reading memory entries" };
+      if (ctx.isColdReader || (ctx.task && !ctx.task.useMemory)) {
+        return { error: "本轮不允许读取偏好记忆" };
       }
 
       const entry = await memoryRepository.getMemoryEntryById(id);
-      if (!entry || entry.projectId !== ctx.projectId) {
+      if (
+        !entry ||
+        entry.projectId !== ctx.projectId ||
+        entry.status !== "active"
+      ) {
         return {
           error: `Memory entry not found or unauthorized in project ${ctx.projectId}`,
         };
@@ -301,7 +386,14 @@ export class ReadToolsEngine {
     input: SearchManuscriptInput,
     ctx: ToolExecutionContext,
   ) {
-    const scenes = await projectRepository.listScenesByProject(ctx.projectId);
+    const scenes = ctx.task
+      ? ctx.task.scenes.map((s) => ({
+          ...s,
+          content: s.text.slice(s.from, s.to),
+          updatedAt: "",
+          currentRevisionId: s.revisionId,
+        }))
+      : await projectRepository.listScenesByProject(ctx.projectId);
     const results: Array<{
       sceneId: string;
       sceneTitle: string;
@@ -328,7 +420,8 @@ export class ReadToolsEngine {
           sceneId: scene.id,
           sceneTitle: scene.title || "未命名场景",
           snippet,
-          offset: pos,
+          offset:
+            pos + (ctx.task?.scenes.find((s) => s.id === scene.id)?.from ?? 0),
         });
 
         ctx.receiptBuilder?.recordItem({
@@ -337,6 +430,15 @@ export class ReadToolsEngine {
           inclusionMode: "excerpt",
           excerptLength: snippet.length,
           reason: `Search match for "${input.query}"`,
+          revisionId: scene.currentRevisionId || undefined,
+          locator: {
+            from:
+              start +
+              (ctx.task?.scenes.find((s) => s.id === scene.id)?.from ?? 0),
+            to:
+              end +
+              (ctx.task?.scenes.find((s) => s.id === scene.id)?.from ?? 0),
+          },
         });
 
         pos = plain.toLowerCase().indexOf(queryLower, pos + queryLower.length);
@@ -359,8 +461,8 @@ export class ReadToolsEngine {
     input: SearchKnowledgeInput,
     ctx: ToolExecutionContext,
   ) {
-    if (ctx.isColdReader) {
-      return { error: "Cold Reader policy prohibits searching knowledge" };
+    if (ctx.isColdReader || (ctx.task && !ctx.task.useKnowledge)) {
+      return { error: "本轮不允许搜索设定和素材" };
     }
 
     const nodes = await knowledgeRepository.listNodesByProject(ctx.projectId);
@@ -373,6 +475,7 @@ export class ReadToolsEngine {
     }> = [];
 
     for (const node of nodes) {
+      if (!allowsNode(node, ctx)) continue;
       if (input.category && node.kind !== input.category) continue;
 
       const titleMatch = node.title.toLowerCase().includes(queryLower);
@@ -401,6 +504,11 @@ export class ReadToolsEngine {
           inclusionMode: "excerpt",
           excerptLength: snippet.length,
           reason: `Knowledge search match for "${input.query}"`,
+          locator: {
+            title: node.title,
+            source: node.metadata.source,
+            sourceLocator: node.metadata.sourceLocator,
+          },
         });
       }
 
@@ -421,14 +529,14 @@ export class ReadToolsEngine {
     input: ReadKnowledgeSourceInput,
     ctx: ToolExecutionContext,
   ) {
-    if (ctx.isColdReader) {
+    if (ctx.isColdReader || (ctx.task && !ctx.task.useKnowledge)) {
       return {
-        error: "Cold Reader policy prohibits reading knowledge sources",
+        error: "本轮不允许读取素材来源",
       };
     }
 
     const node = await knowledgeRepository.getNodeById(input.nodeId);
-    if (!node || node.projectId !== ctx.projectId) {
+    if (!node || node.projectId !== ctx.projectId || !allowsNode(node, ctx)) {
       return { error: "Knowledge node not found or unauthorized" };
     }
 
@@ -442,12 +550,22 @@ export class ReadToolsEngine {
       resourceId: node.id,
       inclusionMode: "full",
       excerptLength: node.content.length,
+      locator: {
+        title: node.title,
+        source: node.metadata.source,
+        sourceLocator: node.metadata.sourceLocator,
+      },
     });
 
     return {
       nodeId: node.id,
       title: node.title,
       content: extractPlainText(node.content),
+      authority: node.authority,
+      scope: { sceneId: node.sceneId, manuscriptId: node.manuscriptId },
+      source: node.metadata.source,
+      sourceLocator: node.metadata.sourceLocator,
+      conditions: node.metadata.conditions,
       assets: relevantAssets.map((a: KnowledgeAsset) => ({
         id: a.id,
         filename: a.originalFileName,
@@ -463,8 +581,8 @@ export class ReadToolsEngine {
     input: InspectMediaSegmentInput,
     ctx: ToolExecutionContext,
   ) {
-    if (ctx.isColdReader) {
-      return { error: "Cold Reader policy prohibits media inspection" };
+    if (ctx.isColdReader || (ctx.task && !ctx.task.useMedia)) {
+      return { error: "本轮不允许读取媒体" };
     }
 
     const segment = await knowledgeRepository.getMediaSegmentById(
@@ -494,6 +612,14 @@ export class ReadToolsEngine {
    * 7. get_revision
    */
   public async getRevision(input: GetRevisionInput, ctx: ToolExecutionContext) {
+    if (
+      ctx.isColdReader ||
+      (ctx.task &&
+        (ctx.task.coldRead ||
+          ctx.task.background === "none" ||
+          !ctx.task.scenes.some((s) => s.id === input.sceneId)))
+    )
+      return { error: "历史版本不在本轮可读范围" };
     const revisions = await manuscriptService.listSceneRevisions(
       input.sceneId,
       ctx.projectId,
@@ -540,6 +666,14 @@ export class ReadToolsEngine {
     input: CompareRevisionsInput,
     ctx: ToolExecutionContext,
   ) {
+    if (
+      ctx.isColdReader ||
+      (ctx.task &&
+        (ctx.task.coldRead ||
+          ctx.task.background === "none" ||
+          !ctx.task.scenes.some((s) => s.id === input.sceneId)))
+    )
+      return { error: "历史版本不在本轮可读范围" };
     const revisions = await manuscriptService.listSceneRevisions(
       input.sceneId,
       ctx.projectId,
@@ -572,28 +706,31 @@ export class ReadToolsEngine {
    * 9. query_memory
    */
   public async queryMemory(input: QueryMemoryInput, ctx: ToolExecutionContext) {
-    if (ctx.isColdReader) {
-      return { error: "Cold Reader policy prohibits memory inspection" };
+    if (ctx.isColdReader || (ctx.task && !ctx.task.useMemory)) {
+      return { error: "本轮不允许读取偏好记忆" };
     }
 
-    const memories = await memoryRepository.listMemoryEntriesByProject(
-      ctx.projectId,
-    );
-    const results = memories.slice(0, input.limit).map((m: MemoryEntry) => {
-      ctx.receiptBuilder?.recordItem({
-        resourceType: "memory_entry",
-        resourceId: m.id,
-        inclusionMode: "full",
-        excerptLength: m.content.length,
-      });
+    const memories = (
+      await memoryService.getScopedMemories({ projectId: ctx.projectId })
+    ).memories;
+    const results = memories
+      .filter((m) => m.status === "active")
+      .slice(0, input.limit)
+      .map((m: MemoryEntry) => {
+        ctx.receiptBuilder?.recordItem({
+          resourceType: "memory_entry",
+          resourceId: m.id,
+          inclusionMode: "full",
+          excerptLength: m.content.length,
+        });
 
-      return {
-        id: m.id,
-        key: m.key,
-        content: m.content,
-        scope: m.scope,
-      };
-    });
+        return {
+          id: m.id,
+          key: m.key,
+          content: m.content,
+          scope: m.scope,
+        };
+      });
 
     return {
       count: results.length,

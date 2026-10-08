@@ -1,11 +1,24 @@
-import { changeSetService, projectRepository, manuscriptService } from "../../domain";
+import {
+  changeSetService,
+  changeSetRepository,
+  manuscriptService,
+  knowledgeRepository,
+} from "../../domain";
+import crypto from "node:crypto";
+import { KnowledgeKindEnum } from "../../../shared/schemas/knowledge";
 import type { ToolExecutionContext } from "./read-tools";
-import { splitManuscriptTextByAnchors, computeSplitCoverage } from "../../../shared/manuscript";
+import {
+  splitManuscriptTextByAnchors,
+  computeSplitCoverage,
+  findBestAnchorMatch,
+} from "../../../shared/manuscript";
 import type { ProposeSceneSplitsInput } from "../../../shared/schemas/tools";
 
 export interface ProposeTextChangeInput {
   changeSetTitle?: string;
   changeSetObjective?: string;
+  changeSetId?: string;
+  dependencyGroup?: string;
   sceneId: string;
   baseRevisionId?: string;
   quote: string;
@@ -40,48 +53,110 @@ export class ProposalToolsEngine {
   /**
    * 1. propose_text_change
    */
-  public async proposeTextChange(input: ProposeTextChangeInput, ctx: ToolExecutionContext) {
+  public async proposeTextChange(
+    input: ProposeTextChangeInput,
+    ctx: ToolExecutionContext,
+  ) {
+    const snapshot = ctx.task?.scenes.find((s) => s.id === input.sceneId);
+    if (
+      ctx.task &&
+      (!snapshot ||
+        (ctx.task.scope !== "project" && input.sceneId !== ctx.task.sceneId))
+    )
+      throw new Error("修改对象不在本轮范围内");
+    if (ctx.task?.scope === "selection") {
+      const anchor = findBestAnchorMatch({
+        plainText: snapshot!.text,
+        quote: input.quote,
+        prefixAnchor: input.prefixAnchor,
+        suffixAnchor: input.suffixAnchor,
+      });
+      if (
+        !anchor.found ||
+        !anchor.range ||
+        anchor.range.from < ctx.task.selection!.from ||
+        anchor.range.to > ctx.task.selection!.to
+      )
+        throw new Error("提案超出作者选定段落");
+    }
+    const operation = {
+      targetType: "scene" as const,
+      targetId: input.sceneId,
+      baseRevisionId: snapshot?.revisionId || input.baseRevisionId,
+      operationType: "replace_text_range" as const,
+      quote: input.quote,
+      prefixAnchor: input.prefixAnchor,
+      suffixAnchor: input.suffixAnchor,
+      replacementContent: input.replacementText,
+      literaryTradeoff: input.explanation,
+      metadata: { dependencyGroup: input.dependencyGroup },
+    };
+    const existing = input.changeSetId
+      ? await changeSetRepository.getChangeSetById(input.changeSetId)
+      : undefined;
+    if (existing) {
+      if (
+        existing.projectId !== ctx.projectId ||
+        existing.runId !== ctx.runId ||
+        !["proposed", "needs_rebase"].includes(existing.status)
+      )
+        throw new Error("不能向其他任务或已处理案卷追加修改");
+      await changeSetRepository.createOperation({
+        ...operation,
+        projectId: ctx.projectId,
+        changeSetId: existing.id,
+      });
+      await changeSetService.validateChangeSet(existing.id, ctx.projectId);
+      return {
+        success: true,
+        changeSetId: existing.id,
+        status: (await changeSetRepository.getChangeSetById(existing.id))!
+          .status,
+      };
+    }
+    if (input.changeSetId) throw new Error("案卷不存在");
     const result = await changeSetService.createChangeSetWithOperations(
       {
         projectId: ctx.projectId,
         threadId: ctx.threadId,
         runId: ctx.runId,
-        title: input.changeSetTitle || "推敲修改建议",
-        objective: input.changeSetObjective || "根据创作要求调整正文描写与用词",
+        title: input.changeSetTitle || "本轮修订",
+        objective:
+          ctx.task?.objective ||
+          input.changeSetObjective ||
+          "根据作者目标推敲正文",
         rationale: input.explanation,
       },
-      [
-        {
-          targetType: "scene",
-          targetId: input.sceneId,
-          baseRevisionId: input.baseRevisionId,
-          operationType: "replace_text_range",
-          quote: input.quote,
-          prefixAnchor: input.prefixAnchor,
-          suffixAnchor: input.suffixAnchor,
-          replacementContent: input.replacementText,
-          literaryTradeoff: input.explanation,
-        },
-      ]
+      [operation],
     );
-
     return {
       success: true,
       changeSetId: result.changeSet.id,
       status: result.changeSet.status,
       operationCount: result.operations.length,
-      operations: result.operations.map((op) => ({
-        id: op.id,
-        status: op.status,
-        validationResult: op.validationResult,
-      })),
     };
   }
 
   /**
    * 2. propose_knowledge_create
    */
-  public async proposeKnowledgeCreate(input: ProposeKnowledgeCreateInput, ctx: ToolExecutionContext) {
+  public async proposeKnowledgeCreate(
+    input: ProposeKnowledgeCreateInput,
+    ctx: ToolExecutionContext,
+  ) {
+    const kind = KnowledgeKindEnum.parse(input.kind);
+    if (!input.title?.trim() || !input.content?.trim())
+      throw new Error("设定标题和内容不能为空");
+    if (
+      ctx.task &&
+      (!ctx.task.useKnowledge || ctx.task.participation !== "suggest")
+    )
+      throw new Error("本轮未允许提出设定修改");
+    if (
+      ctx.allowedKnowledgeKinds?.length &&
+      !ctx.allowedKnowledgeKinds.includes(kind)
+    )
+      throw new Error("此技能不允许提出该类设定");
     const result = await changeSetService.createChangeSetWithOperations(
       {
         projectId: ctx.projectId,
@@ -94,16 +169,18 @@ export class ProposalToolsEngine {
       [
         {
           targetType: "knowledge_node",
-          targetId: `new-node-${Date.now()}`,
+          targetId: crypto.randomUUID(),
           operationType: "create_knowledge",
           replacementContent: input.content,
           structuredPayload: {
-            kind: input.kind,
+            kind,
             title: input.title,
+            sceneId:
+              ctx.task?.scope === "project" ? undefined : ctx.task?.sceneId,
           },
           literaryTradeoff: input.explanation,
         },
-      ]
+      ],
     );
 
     return {
@@ -116,7 +193,31 @@ export class ProposalToolsEngine {
   /**
    * 3. propose_knowledge_update
    */
-  public async proposeKnowledgeUpdate(input: ProposeKnowledgeUpdateInput, ctx: ToolExecutionContext) {
+  public async proposeKnowledgeUpdate(
+    input: ProposeKnowledgeUpdateInput,
+    ctx: ToolExecutionContext,
+  ) {
+    if (
+      ctx.task &&
+      (!ctx.task.useKnowledge || ctx.task.participation !== "suggest")
+    )
+      throw new Error("本轮未允许提出设定修改");
+    const node = await knowledgeRepository.getNodeById(input.nodeId);
+    if (!node || node.projectId !== ctx.projectId || node.status !== "active")
+      throw new Error("设定不存在或尚未确认");
+    if (
+      ctx.task &&
+      ((node.sceneId && !ctx.task.scenes.some((s) => s.id === node.sceneId)) ||
+        (node.manuscriptId &&
+          !ctx.task.scenes.some((s) => s.manuscriptId === node.manuscriptId)))
+    )
+      throw new Error("设定不在本轮范围内");
+    if (
+      ctx.allowedKnowledgeKinds?.length &&
+      !ctx.allowedKnowledgeKinds.includes(node.kind)
+    )
+      throw new Error("此技能不允许修改该类设定");
+    if (!input.content?.trim()) throw new Error("设定内容不能为空");
     const result = await changeSetService.createChangeSetWithOperations(
       {
         projectId: ctx.projectId,
@@ -132,9 +233,14 @@ export class ProposalToolsEngine {
           targetId: input.nodeId,
           operationType: "update_knowledge",
           replacementContent: input.content,
+          quote: node.content,
+          metadata: {
+            baseKnowledgeContent: node.content,
+            targetTitle: node.title,
+          },
           literaryTradeoff: input.explanation,
         },
-      ]
+      ],
     );
 
     return {
@@ -147,7 +253,10 @@ export class ProposalToolsEngine {
   /**
    * 4. propose_knowledge_archive
    */
-  public async proposeKnowledgeArchive(input: ProposeKnowledgeArchiveInput, ctx: ToolExecutionContext) {
+  public async proposeKnowledgeArchive(
+    input: ProposeKnowledgeArchiveInput,
+    ctx: ToolExecutionContext,
+  ) {
     const result = await changeSetService.createChangeSetWithOperations(
       {
         projectId: ctx.projectId,
@@ -164,7 +273,7 @@ export class ProposalToolsEngine {
           operationType: "archive_knowledge",
           literaryTradeoff: input.explanation,
         },
-      ]
+      ],
     );
 
     return {
@@ -177,27 +286,30 @@ export class ProposalToolsEngine {
   /**
    * 5. propose_scene_splits
    */
-  public async proposeSceneSplits(input: ProposeSceneSplitsInput, ctx: ToolExecutionContext) {
-    // 1. Resolve target scene
-    let targetSceneId = input.sceneId;
-    if (!targetSceneId && input.manuscriptId) {
-      const scenes = await projectRepository.listScenesByManuscript(input.manuscriptId);
-      targetSceneId = scenes[0]?.id;
-    }
-    if (!targetSceneId) {
-      const allScenes = await projectRepository.listScenesByProject(ctx.projectId);
-      targetSceneId = allScenes[0]?.id;
-    }
-
-    if (!targetSceneId) {
-      throw new Error(`No target scene found to split in project ${ctx.projectId}`);
-    }
-
-    const scene = await manuscriptService.getSceneById(targetSceneId, ctx.projectId);
+  public async proposeSceneSplits(
+    input: ProposeSceneSplitsInput,
+    ctx: ToolExecutionContext,
+  ) {
+    const targetSceneId = input.sceneId;
+    if (!targetSceneId) throw new Error("分章必须明确指定目标章节");
+    if (
+      ctx.task &&
+      (ctx.task.scope === "selection" ||
+        (ctx.task.scope !== "project" && targetSceneId !== ctx.task.sceneId) ||
+        !ctx.task.scenes.some((s) => s.id === targetSceneId))
+    )
+      throw new Error("分章超出本轮修改范围");
+    const scene = await manuscriptService.getSceneById(
+      targetSceneId,
+      ctx.projectId,
+    );
     if (!scene) {
       throw new Error(`Target scene not found: ${targetSceneId}`);
     }
 
+    const snapshot = ctx.task?.scenes.find((s) => s.id === targetSceneId);
+    if (snapshot && scene.currentRevisionId !== snapshot.revisionId)
+      throw new Error("正文已更新，请以新版本重新提出分章方案");
     const sourceText = scene.content;
     const splitResults = splitManuscriptTextByAnchors(sourceText, input.splits);
     const coverage = computeSplitCoverage(sourceText, splitResults);
@@ -211,11 +323,12 @@ export class ProposalToolsEngine {
     if (unmatchedSplits.length > 0) {
       console.warn(
         `[ProposalTools] ${unmatchedSplits.length} split(s) failed to match anchors in scene ${scene.id}:`,
-        unmatchedSplits
+        unmatchedSplits,
       );
     }
 
-    const changeSetTitle = input.changeSetTitle || `分场规划方案：${splitResults.length} 场`;
+    const changeSetTitle =
+      input.changeSetTitle || `分场规划方案：${splitResults.length} 场`;
     const changeSetObjective =
       input.changeSetObjective ||
       `将《${scene.title}》细化拆分为 ${splitResults.length} 个独立场景/章节`;
@@ -242,12 +355,13 @@ export class ProposalToolsEngine {
             coverage,
             sceneCount: splitResults.length,
             splits: splitResults,
-            unmatchedSplits: unmatchedSplits.length > 0 ? unmatchedSplits : undefined,
+            unmatchedSplits:
+              unmatchedSplits.length > 0 ? unmatchedSplits : undefined,
             originalSceneTitle: scene.title,
             manuscriptId: scene.manuscriptId,
           },
         },
-      ]
+      ],
     );
 
     return {
@@ -271,4 +385,3 @@ export class ProposalToolsEngine {
 }
 
 export const proposalToolsEngine = new ProposalToolsEngine();
-

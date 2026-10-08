@@ -20,6 +20,8 @@ export function CreateProjectModal({
   const fetcher = useFetcher();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [genre, setGenre] = useState("other");
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     if (editingProject) {
@@ -31,6 +33,12 @@ export function CreateProjectModal({
     }
   }, [editingProject, isOpen]);
 
+  useEffect(() => {
+    if (submitted && fetcher.state === "idle" && fetcher.data?.success) {
+      setSubmitted(false);
+      onClose();
+    }
+  }, [submitted, fetcher.state, fetcher.data, onClose]);
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -45,7 +53,7 @@ export function CreateProjectModal({
           title: title.trim(),
           description: description.trim(),
         },
-        { method: "post" }
+        { method: "post" },
       );
     } else {
       fetcher.submit(
@@ -53,11 +61,12 @@ export function CreateProjectModal({
           intent: "create_project",
           title: title.trim(),
           description: description.trim(),
+          genre,
         },
-        { method: "post" }
+        { method: "post" },
       );
     }
-    onClose();
+    setSubmitted(true);
   };
 
   return (
@@ -121,6 +130,47 @@ export function CreateProjectModal({
             />
           </div>
 
+          {!editingProject && (
+            <label className="block text-xs text-ink-muted">
+              {t("studio.genre")}
+              <select
+                value={genre}
+                onChange={(e) => setGenre(e.target.value)}
+                className="w-full mt-2 border border-line-strong rounded p-2 bg-paper"
+              >
+                {(
+                  [
+                    "novel",
+                    "novella",
+                    "short_story",
+                    "essay",
+                    "poetry",
+                    "other",
+                  ] as const
+                ).map((id) => (
+                  <option key={id} value={id}>
+                    {t(
+                      (
+                        {
+                          novel: "studio.genre_novel",
+                          novella: "studio.genre_novella",
+                          short_story: "studio.genre_short_story",
+                          essay: "studio.genre_essay",
+                          poetry: "studio.genre_poetry",
+                          other: "studio.genre_other",
+                        } as const
+                      )[id],
+                    )}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {fetcher.data?.error && (
+            <p role="alert" className="text-cinnabar text-xs">
+              {fetcher.data.error}
+            </p>
+          )}
           <div className="flex items-center justify-end space-x-3 pt-3 border-t border-ink-muted/15">
             <button
               type="button"
@@ -142,4 +192,3 @@ export function CreateProjectModal({
     </div>
   );
 }
-

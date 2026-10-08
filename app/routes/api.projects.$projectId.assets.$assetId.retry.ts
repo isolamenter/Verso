@@ -1,4 +1,5 @@
-import { assetService } from "../../server/domain";
+import { modelProcessingInfo } from "../../server/agent/context/task-context";
+import { projectRepository, assetService } from "../../server/domain";
 
 export async function action({
   params,
@@ -11,6 +12,8 @@ export async function action({
   }
 
   try {
+    const settings = await projectRepository.getProjectSettings(projectId);
+    if (settings?.metadata.confirmedEndpoint !== modelProcessingInfo().endpoint) return Response.json({ error: "请先确认模型处理方式" }, { status: 409 });
     const result = await assetService.retryIngestion(assetId, projectId);
     return { success: true, asset: result.asset, domainJobId: result.domainJobId };
   } catch (err: any) {

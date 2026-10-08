@@ -1,3 +1,4 @@
+import { modelProcessingInfo } from "../../../server/agent/context/task-context";
 import { describe, it, expect } from "vitest";
 import { projectRepository, assetService } from "../../../server/domain";
 import { loader as assetsLoader, action as assetsAction } from "../../../app/routes/api.projects.$projectId.assets";
@@ -29,6 +30,8 @@ describe("E15 — Document, Image, Audio, and Video Ingestion", () => {
 
   it("handles assets API loader and upload / retry actions", async () => {
     const project = await projectRepository.createProject({ title: "Asset API Project" });
+
+    await projectRepository.upsertProjectSettings(project.id, { metadata: { confirmedEndpoint: modelProcessingInfo().endpoint } });
 
     // 1. Upload via multipart form action
     const fakeFile = new File(["test document contents for character backstory"], "backstory.txt", {

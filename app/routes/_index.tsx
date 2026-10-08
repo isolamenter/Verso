@@ -6,21 +6,31 @@ import { ResumeRecentCard } from "../components/workspace/ResumeRecentCard";
 import { ProjectList } from "../components/workspace/ProjectList";
 import { CreateProjectModal } from "../components/workspace/CreateProjectModal";
 import { ImportOriginalModal } from "../components/workspace/ImportOriginalModal";
+import { ManuscriptGenreEnum } from "../../shared/schemas/project";
 import { useI18n } from "../i18n";
-import type { ProjectSummary, WorkspaceSettings } from "../../shared/schemas/project";
+import type {
+  ProjectSummary,
+  WorkspaceSettings,
+} from "../../shared/schemas/project";
 
 export async function loader() {
   const workspaceSettings = await projectRepository.getWorkspaceSettings();
-  const projects = await projectRepository.listProjectsWithSummary({ includeArchived: false });
-  
-  const recentProject = (workspaceSettings.activeProjectId
-    ? projects.find((p) => p.id === workspaceSettings.activeProjectId)
-    : null) || projects[0] || null;
+  const projects = await projectRepository.listProjectsWithSummary({
+    includeArchived: false,
+  });
+
+  const recentProject =
+    (workspaceSettings.activeProjectId
+      ? projects.find((p) => p.id === workspaceSettings.activeProjectId)
+      : null) ||
+    projects[0] ||
+    null;
 
   return {
     workspaceSettings,
     projects,
     recentProject,
+    renderedAt: new Date().toISOString(),
   };
 }
 
@@ -31,8 +41,12 @@ export async function action({ request }: { request: Request }) {
   if (intent === "create_project") {
     const title = (formData.get("title") as string) || "未命名作品";
     const description = (formData.get("description") as string) || undefined;
-    const content = ((formData.get("content") as string) || "").replace(/\r\n/g, "\n");
-    const sceneTitle = (formData.get("sceneTitle") as string) || "第一场";
+    const content = ((formData.get("content") as string) || "").replace(
+      /\r\n/g,
+      "\n",
+    );
+    const sceneTitle = (formData.get("sceneTitle") as string) || "正文";
+    const genre = ManuscriptGenreEnum.parse(formData.get("genre") || "other");
 
     const project = await projectRepository.createProject({
       title,
@@ -42,7 +56,8 @@ export async function action({ request }: { request: Request }) {
     // Create default initial manuscript and scene
     const manuscript = await projectRepository.createManuscript({
       projectId: project.id,
-      title: "正文第一卷",
+      title: "正文",
+      genre,
       order: 1,
     });
 
@@ -86,7 +101,9 @@ export async function action({ request }: { request: Request }) {
       await projectRepository.deleteProject(projectId);
       const settings = await projectRepository.getWorkspaceSettings();
       if (settings.activeProjectId === projectId) {
-        await projectRepository.updateWorkspaceSettings({ activeProjectId: null });
+        await projectRepository.updateWorkspaceSettings({
+          activeProjectId: null,
+        });
       }
     }
     return { success: true };
@@ -101,11 +118,14 @@ export default function WorkspaceIndexRoute() {
     workspaceSettings: WorkspaceSettings;
     projects: ProjectSummary[];
     recentProject: ProjectSummary | null;
+    renderedAt: string;
   };
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<ProjectSummary | null>(null);
+  const [editingProject, setEditingProject] = useState<ProjectSummary | null>(
+    null,
+  );
   const [droppedFile, setDroppedFile] = useState<File | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
@@ -152,7 +172,7 @@ export default function WorkspaceIndexRoute() {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className="min-h-screen bg-paper flex flex-col font-serif relative"
+      className="studio-library min-h-screen bg-paper flex flex-col relative"
     >
       {/* Fullscreen Drag and Drop Overlay */}
       {isDraggingOver && (
@@ -174,12 +194,13 @@ export default function WorkspaceIndexRoute() {
         onOpenImportModal={handleOpenImport}
       />
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-8">
+      <main className="studio-library-main">
         {data.recentProject && (
           <ResumeRecentCard project={data.recentProject} />
         )}
 
         <ProjectList
+          renderedAt={data.renderedAt}
           projects={data.projects}
           onRename={handleOpenEdit}
           onOpenCreateModal={handleOpenCreate}

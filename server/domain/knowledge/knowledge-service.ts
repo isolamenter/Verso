@@ -19,7 +19,7 @@ export class KnowledgeService {
     const node = await knowledgeRepository.createNode({
       ...input,
       authority: input.authority ?? "user_authored_locked",
-      status: "active",
+      status: input.status ?? "active",
     });
 
     return node;

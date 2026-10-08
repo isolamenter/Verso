@@ -109,6 +109,7 @@ export class KnowledgeRepository implements IKnowledgeRepository {
         isPinned: input.isPinned,
         language: input.language,
         parentId: input.parentId,
+        sceneId: input.sceneId,
         metadata: input.metadata,
         updatedAt: new Date(),
       })

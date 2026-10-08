@@ -208,6 +208,7 @@ export class MemoryRepository implements IMemoryRepository {
       .update(tasteEntries)
       .set({
         preference: input.preference,
+        explicitness: input.explicitness,
         conditions: input.conditions,
         antiPreferences: input.antiPreferences,
         confidence: input.confidence,

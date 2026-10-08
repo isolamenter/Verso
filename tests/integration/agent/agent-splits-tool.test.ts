@@ -1,3 +1,4 @@
+import { TaskRequestSchema } from "../../../shared/schemas/task";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { projectRepository, agentRepository, changeSetRepository } from "../../../server/domain";
 import { agentRuntime } from "../../../server/agent/runtime/agent-runtime";
@@ -72,12 +73,13 @@ describe("Agent Tool Execution — propose_scene_splits in Agent Run", () => {
       projectId: project.id,
       threadId: thread.id,
       userPrompt: "请帮我把当前这篇文稿切分为不同场景",
+      task: TaskRequestSchema.parse({ mode: "structure", scope: "scene", sceneId: scene.id, revisionMap: { [scene.id]: scene.currentRevisionId! }, participation: "suggest" }),
     });
 
     // Wait for run loop to complete
     let updatedRun = await agentRepository.getRunById(run.id);
     const start = Date.now();
-    while (updatedRun && updatedRun.status === "executing" && Date.now() - start < 3000) {
+    while (updatedRun && !["completed", "partial", "failed", "cancelled"].includes(updatedRun.status) && Date.now() - start < 3000) {
       await new Promise((resolve) => setTimeout(resolve, 50));
       updatedRun = await agentRepository.getRunById(run.id);
     }

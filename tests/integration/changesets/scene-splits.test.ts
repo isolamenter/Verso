@@ -127,11 +127,11 @@ describe("Scene Splits Tooling and Atomic Transactional Apply", () => {
     // 5. Verify revision history created
     const firstSceneRevisions = await manuscriptService.listSceneRevisions(sceneToSplit.id, project.id);
     expect(firstSceneRevisions.length).toBeGreaterThanOrEqual(1);
-    expect(firstSceneRevisions[0].changeType).toBe("agent_applied");
+    expect(firstSceneRevisions[0].changeType).toBe("ai_accepted");
 
     const secondSceneRevisions = await manuscriptService.listSceneRevisions(updatedScenes[1].id, project.id);
     expect(secondSceneRevisions.length).toBe(1);
-    expect(secondSceneRevisions[0].changeType).toBe("agent_applied");
+    expect(secondSceneRevisions[0].changeType).toBe("ai_accepted");
 
     // 6. Verify ChangeSet record is marked applied
     const updatedChangeSet = await changeSetRepository.getChangeSetById(proposalRes.changeSetId);

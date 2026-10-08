@@ -26,6 +26,7 @@
     "@tiptap/starter-kit": "^3.30.3",
     "clsx": "^2.1.1",
     "compression": "^1.8.1",
+    "docx": "^9.9.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",

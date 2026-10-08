@@ -1,8 +1,16 @@
 import { db } from "../../db/client";
 import { scenes, sceneRevisions, manuscripts } from "../../db/schema";
 import { eq, desc, asc, and } from "drizzle-orm";
-import type { Scene, SceneRevision, Manuscript, SceneRevisionChangeType } from "../../../shared/schemas/project";
-import { computeTextChecksum } from "../../../shared/manuscript";
+import type {
+  Scene,
+  SceneRevision,
+  Manuscript,
+  SceneRevisionChangeType,
+} from "../../../shared/schemas/project";
+import {
+  computeTextChecksum,
+  extractPlainText,
+} from "../../../shared/manuscript";
 import crypto from "node:crypto";
 
 export class RevisionConflictError extends Error {
@@ -11,7 +19,9 @@ export class RevisionConflictError extends Error {
   public actualLatestRevisionId: string;
 
   constructor(sceneId: string, expected: string, actual: string) {
-    super(`Revision conflict for scene ${sceneId}: expected base revision ${expected}, but latest revision is ${actual}`);
+    super(
+      `Revision conflict for scene ${sceneId}: expected base revision ${expected}, but latest revision is ${actual}`,
+    );
     this.name = "RevisionConflictError";
     this.sceneId = sceneId;
     this.expectedBaseRevisionId = expected;
@@ -20,7 +30,10 @@ export class RevisionConflictError extends Error {
 }
 
 export class ManuscriptService {
-  public async getSceneById(sceneId: string, projectId: string): Promise<Scene | null> {
+  public async getSceneById(
+    sceneId: string,
+    projectId: string,
+  ): Promise<Scene | null> {
     const [scene] = await db
       .select()
       .from(scenes)
@@ -28,21 +41,37 @@ export class ManuscriptService {
     return (scene as unknown as Scene) ?? null;
   }
 
-  public async getLatestSceneRevision(sceneId: string, projectId: string): Promise<SceneRevision | null> {
+  public async getLatestSceneRevision(
+    sceneId: string,
+    projectId: string,
+  ): Promise<SceneRevision | null> {
     const [rev] = await db
       .select()
       .from(sceneRevisions)
-      .where(and(eq(sceneRevisions.sceneId, sceneId), eq(sceneRevisions.projectId, projectId)))
+      .where(
+        and(
+          eq(sceneRevisions.sceneId, sceneId),
+          eq(sceneRevisions.projectId, projectId),
+        ),
+      )
       .orderBy(desc(sceneRevisions.revisionNumber))
       .limit(1);
     return (rev as unknown as SceneRevision) ?? null;
   }
 
-  public async listSceneRevisions(sceneId: string, projectId: string): Promise<SceneRevision[]> {
+  public async listSceneRevisions(
+    sceneId: string,
+    projectId: string,
+  ): Promise<SceneRevision[]> {
     const rows = await db
       .select()
       .from(sceneRevisions)
-      .where(and(eq(sceneRevisions.sceneId, sceneId), eq(sceneRevisions.projectId, projectId)))
+      .where(
+        and(
+          eq(sceneRevisions.sceneId, sceneId),
+          eq(sceneRevisions.projectId, projectId),
+        ),
+      )
       .orderBy(desc(sceneRevisions.revisionNumber));
     return rows as unknown as SceneRevision[];
   }
@@ -52,13 +81,14 @@ export class ManuscriptService {
     projectId: string,
     content: string,
     options?: {
-      expectedBaseRevisionId?: string;
+      expectedBaseRevisionId?: string | null;
       changeType?: SceneRevisionChangeType;
       description?: string;
       diffSummary?: Record<string, unknown>;
       appliedChangeSetId?: string;
       metadata?: Record<string, unknown>;
-    }
+      title?: string;
+    },
   ): Promise<{ scene: Scene; revision: SceneRevision }> {
     return await db.transaction(async (tx) => {
       // 1. Fetch current scene and lock row for update
@@ -76,24 +106,31 @@ export class ManuscriptService {
       const [latestRev] = await tx
         .select()
         .from(sceneRevisions)
-        .where(and(eq(sceneRevisions.sceneId, sceneId), eq(sceneRevisions.projectId, projectId)))
+        .where(
+          and(
+            eq(sceneRevisions.sceneId, sceneId),
+            eq(sceneRevisions.projectId, projectId),
+          ),
+        )
         .orderBy(desc(sceneRevisions.revisionNumber))
         .limit(1);
 
       // Check base revision conflict if expectedBaseRevisionId was specified
-      if (options?.expectedBaseRevisionId && latestRev) {
-        if (latestRev.id !== options.expectedBaseRevisionId) {
+      if (options?.expectedBaseRevisionId !== undefined) {
+        if (
+          (scene.currentRevisionId ?? null) !== options.expectedBaseRevisionId
+        ) {
           throw new RevisionConflictError(
             sceneId,
-            options.expectedBaseRevisionId,
-            latestRev.id
+            options.expectedBaseRevisionId ?? "",
+            scene.currentRevisionId ?? "",
           );
         }
       }
 
       const nextRevNum = (latestRev?.revisionNumber ?? 0) + 1;
       const newRevId = crypto.randomUUID();
-      const characterCount = content.length;
+      const characterCount = extractPlainText(content).length;
       const checksum = computeTextChecksum(content);
 
       const [newRev] = await tx
@@ -107,11 +144,12 @@ export class ManuscriptService {
           description: options?.description ?? `Revision ${nextRevNum}`,
           content,
           characterCount,
-          diffSummary: typeof options?.diffSummary === "string"
-            ? options.diffSummary
-            : options?.diffSummary
-            ? JSON.stringify(options.diffSummary)
-            : null,
+          diffSummary:
+            typeof options?.diffSummary === "string"
+              ? options.diffSummary
+              : options?.diffSummary
+                ? JSON.stringify(options.diffSummary)
+                : null,
           appliedChangeSetId: options?.appliedChangeSetId,
           metadata: {
             ...(options?.metadata ?? {}),
@@ -124,6 +162,7 @@ export class ManuscriptService {
         .update(scenes)
         .set({
           content,
+          title: options?.title ?? scene.title,
           characterCount,
           currentRevisionId: newRevId,
           updatedAt: new Date(),
@@ -141,9 +180,25 @@ export class ManuscriptService {
   public async restoreSceneRevision(
     sceneId: string,
     projectId: string,
-    targetRevisionId: string
+    targetRevisionId: string,
+    expectedBaseRevisionId?: string,
   ): Promise<{ scene: Scene; revision: SceneRevision }> {
     return await db.transaction(async (tx) => {
+      const [currentScene] = await tx
+        .select()
+        .from(scenes)
+        .where(and(eq(scenes.id, sceneId), eq(scenes.projectId, projectId)))
+        .for("update");
+      if (!currentScene) throw new Error("章节不存在");
+      if (
+        expectedBaseRevisionId &&
+        currentScene.currentRevisionId !== expectedBaseRevisionId
+      )
+        throw new RevisionConflictError(
+          sceneId,
+          expectedBaseRevisionId,
+          currentScene.currentRevisionId || "",
+        );
       // 1. Fetch target revision
       const [targetRev] = await tx
         .select()
@@ -152,8 +207,8 @@ export class ManuscriptService {
           and(
             eq(sceneRevisions.id, targetRevisionId),
             eq(sceneRevisions.sceneId, sceneId),
-            eq(sceneRevisions.projectId, projectId)
-          )
+            eq(sceneRevisions.projectId, projectId),
+          ),
         );
 
       if (!targetRev) {
@@ -164,7 +219,12 @@ export class ManuscriptService {
       const [latestRev] = await tx
         .select()
         .from(sceneRevisions)
-        .where(and(eq(sceneRevisions.sceneId, sceneId), eq(sceneRevisions.projectId, projectId)))
+        .where(
+          and(
+            eq(sceneRevisions.sceneId, sceneId),
+            eq(sceneRevisions.projectId, projectId),
+          ),
+        )
         .orderBy(desc(sceneRevisions.revisionNumber))
         .limit(1);
 
@@ -183,7 +243,7 @@ export class ManuscriptService {
           changeType: "rollback",
           description: `Restored to Revision ${targetRev.revisionNumber}`,
           content: targetRev.content,
-          characterCount: targetRev.content.length,
+          characterCount: extractPlainText(targetRev.content).length,
           rollbackSourceRevId: targetRevisionId,
           metadata: {
             restoredFromRevisionNumber: targetRev.revisionNumber,
@@ -196,7 +256,7 @@ export class ManuscriptService {
         .update(scenes)
         .set({
           content: targetRev.content,
-          characterCount: targetRev.content.length,
+          characterCount: extractPlainText(targetRev.content).length,
           currentRevisionId: newRevId,
           updatedAt: new Date(),
         })
@@ -210,7 +270,9 @@ export class ManuscriptService {
     });
   }
 
-  public async listManuscriptsWithScenes(projectId: string): Promise<Array<Manuscript & { scenes: Scene[] }>> {
+  public async listManuscriptsWithScenes(
+    projectId: string,
+  ): Promise<Array<Manuscript & { scenes: Scene[] }>> {
     const msList = await db
       .select()
       .from(manuscripts)
@@ -222,7 +284,9 @@ export class ManuscriptService {
       const scList = await db
         .select()
         .from(scenes)
-        .where(and(eq(scenes.manuscriptId, ms.id), eq(scenes.projectId, projectId)))
+        .where(
+          and(eq(scenes.manuscriptId, ms.id), eq(scenes.projectId, projectId)),
+        )
         .orderBy(asc(scenes.order));
 
       results.push({

@@ -57,7 +57,7 @@ export async function loader({
       const currentRun = await agentRepository.getRunById(runId);
       if (
         currentRun &&
-        (currentRun.status === "completed" ||
+        (currentRun.status === "completed" || currentRun.status === "partial" ||
           currentRun.status === "cancelled" ||
           currentRun.status === "failed")
       ) {
@@ -74,7 +74,7 @@ export async function loader({
 
         if (
           event.type === "status_change" &&
-          (event.payload.status === "completed" ||
+          (event.payload.status === "completed" || event.payload.status === "partial" ||
             event.payload.status === "cancelled" ||
             event.payload.status === "failed")
         ) {

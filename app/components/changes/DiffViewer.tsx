@@ -1,49 +1,32 @@
 import { useI18n } from "../../i18n";
-
 export interface DiffViewerProps {
   originalText?: string | null;
   replacementText?: string | null;
   prefixAnchor?: string | null;
   suffixAnchor?: string | null;
 }
-
 export function DiffViewer({
-  originalText = "",
-  replacementText = "",
+  originalText,
+  replacementText,
   prefixAnchor,
   suffixAnchor,
 }: DiffViewerProps) {
   const { t } = useI18n();
-
   return (
-    <div className="bg-paper-light border border-ink-muted/15 rounded p-3 text-xs font-serif leading-relaxed space-y-2">
-      {/* Context Anchors if present */}
+    <div className="studio-diff">
       {(prefixAnchor || suffixAnchor) && (
-        <div className="text-[10px] text-ink-faint italic font-mono flex items-center space-x-1">
-          <span>{t("changes.diffAnchor")}</span>
-          {prefixAnchor && <span className="bg-paper px-1 py-0.5 rounded border border-ink-muted/10">{t("changes.prefixAnchor", { text: prefixAnchor })}</span>}
-          {suffixAnchor && <span className="bg-paper px-1 py-0.5 rounded border border-ink-muted/10">{t("changes.suffixAnchor", { text: suffixAnchor })}</span>}
-        </div>
+        <p className="studio-help">
+          {prefixAnchor} … {suffixAnchor}
+        </p>
       )}
-
-      <div className="space-y-1.5">
-        {/* Deleted / Replaced Original */}
-        {originalText && (
-          <div className="bg-cinnabar/10 border-l-2 border-cinnabar text-cinnabar px-2.5 py-1.5 rounded-r">
-            <span className="font-bold mr-1.5 text-[10px] select-none">{t("changes.diffDelete")}</span>
-            <span className="line-through decoration-cinnabar/60">{originalText}</span>
-          </div>
-        )}
-
-        {/* Added Replacement */}
-        {replacementText && (
-          <div className="bg-emerald-500/10 border-l-2 border-emerald-600 text-emerald-800 dark:text-emerald-300 px-2.5 py-1.5 rounded-r">
-            <span className="font-bold mr-1.5 text-[10px] select-none">{t("changes.diffInsert")}</span>
-            <span>{replacementText}</span>
-          </div>
-        )}
-      </div>
+      <section>
+        <h4>{t("studio.original")}</h4>
+        <p>{originalText || t("studio.emptyText")}</p>
+      </section>
+      <section>
+        <h4>{t("studio.proposedText")}</h4>
+        <p>{replacementText || t("studio.emptyText")}</p>
+      </section>
     </div>
   );
 }
-

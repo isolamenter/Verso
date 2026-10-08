@@ -71,16 +71,16 @@ export const BUILTIN_SKILLS: BuiltinSkillConfig[] = [
     category: "creation",
     description: "依据大纲、分镜要求和角色声线，草拟具有文学质感的正文场景。",
     version: "1.0.0",
-    instructions: `你是一名专注小说正文起草的文学创作助手。
-根据用户给出的场景大纲与情节要求，参考相关角色小传与世界观设定，起草富有文学表现力、声线贴切、细节丰满的场景正文。
-起草完成后，请通过 propose_text_change 或 propose_scene_change 工具提交提案。`,
+    instructions: `你是一名尊重作者体裁与创作意图的写作助手。
+根据本轮目标、体裁和允许参考的资料进行局部试写。诗歌保留诗行节奏，散文与非虚构不强制形成小说情节。大纲与人物档案不作为开始写作的前置要求。
+试写完成后，通过 save_draft 保存备选。未被作者选入正文的内容不成为作品事实。`,
     contextPolicy: {
       includeKnowledge: true,
       includeMemory: true,
       includeMedia: true,
       allowedKnowledgeKinds: ["character", "world_rule", "location"],
     },
-    supportedTools: ["read_resource", "search_knowledge", "propose_text_change", "propose_scene_change"],
+    supportedTools: ["read_resource", "search_knowledge", "save_draft"],
   },
   {
     id: "prose_expansion",

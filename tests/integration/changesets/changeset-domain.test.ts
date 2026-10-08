@@ -52,13 +52,13 @@ describe("E12 — Change Set Domain, Validation, and Transactional Apply", () =>
     expect(applyRes.success).toBe(true);
     expect(applyRes.applyAttempt.status).toBe("success");
 
-    // 3. Verify scene is now updated and has a new revision with changeType 'agent_applied'
+    // 3. Verify scene is now updated and has a new revision with changeType 'ai_accepted'
     const sceneAfterApply = await manuscriptService.getSceneById(scene.id, project.id);
     expect(sceneAfterApply?.content).toContain("他缓缓合上书卷，眼中泛起一丝波澜。");
 
     const revisions = await manuscriptService.listSceneRevisions(scene.id, project.id);
     expect(revisions.length).toBeGreaterThanOrEqual(1);
-    expect(revisions[0].changeType).toBe("agent_applied");
+    expect(revisions[0].changeType).toBe("ai_accepted");
 
     // 4. Verify ChangeSet record is marked applied
     const updatedChangeSet = await changeSetRepository.getChangeSetById(proposalRes.changeSetId);
@@ -156,12 +156,13 @@ describe("E12 — Change Set Domain, Validation, and Transactional Apply", () =>
     expect(derivedOps.length).toBe(1);
     expect(derivedOps[0].quote).toBe("早晨有雾。");
 
-    // Parent changeSet is marked partially_approved
+    // Preparing a partial proposal does not claim that text was applied.
     const parent = await changeSetRepository.getChangeSetById(changeSet.id);
-    expect(parent?.status).toBe("partially_approved");
+    expect(parent?.status).toBe("proposed");
 
     // Apply derived ChangeSet
     await changeSetService.applyChangeSet(derivedChangeSet.id, project.id);
+    expect((await changeSetRepository.getChangeSetById(changeSet.id))?.status).toBe("partially_approved");
 
     // Verify scene updated only with approved op 0
     const updatedScene = await manuscriptService.getSceneById(scene.id, project.id);

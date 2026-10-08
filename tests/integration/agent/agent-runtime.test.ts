@@ -1,3 +1,4 @@
+import { TaskRequestSchema } from "../../../shared/schemas/task";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { projectRepository, agentRepository } from "../../../server/domain";
 import { agentRuntime } from "../../../server/agent/runtime/agent-runtime";
@@ -28,13 +29,13 @@ describe("E10 — Threads, Runs, Events, and Resumable SSE", () => {
       projectId: project.id,
       threadId: thread.id,
       userPrompt: "如何改善这段描写？",
-      attachedQuote: "窗外的雨落在青石板上。",
+      task: TaskRequestSchema.parse({ mode: "review", scope: "project", revisionMap: {}, background: "project", participation: "suggest" }),
     });
 
     // Allow background loop to complete
     let updatedRun = await agentRepository.getRunById(run.id);
     const start = Date.now();
-    while (updatedRun && updatedRun.status === "executing" && Date.now() - start < 3000) {
+    while (updatedRun && !["completed", "partial", "failed", "cancelled"].includes(updatedRun.status) && Date.now() - start < 3000) {
       await new Promise((resolve) => setTimeout(resolve, 50));
       updatedRun = await agentRepository.getRunById(run.id);
     }
@@ -141,6 +142,7 @@ describe("E10 — Threads, Runs, Events, and Resumable SSE", () => {
       projectId: project.id,
       threadId: thread.id,
       userPrompt: "开始长任务",
+      task: TaskRequestSchema.parse({ mode: "review", scope: "project", revisionMap: {}, background: "project" }),
     });
 
     // Let it start

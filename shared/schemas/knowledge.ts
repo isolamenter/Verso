@@ -114,6 +114,7 @@ export const CreateKnowledgeNodeSchema = z.object({
 export type CreateKnowledgeNodeInput = z.infer<typeof CreateKnowledgeNodeSchema>;
 
 export const UpdateKnowledgeNodeSchema = z.object({
+  sceneId: IdSchema.nullable().optional(),
   title: z.string().min(1).optional(),
   content: z.string().optional(),
   summary: z.string().nullable().optional(),

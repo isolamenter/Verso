@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useFetcher } from "react-router";
 import { useI18n } from "../../i18n";
-import { parseUploadedFile, type ParsedFileResult } from "../../utils/fileImporter";
+import {
+  parseUploadedFile,
+  type ParsedFileResult,
+} from "../../utils/fileImporter";
 import { calculateEditorStats } from "../../../shared/manuscript";
 
 export interface ImportOriginalModalProps {
@@ -89,11 +92,13 @@ export function ImportOriginalModal({
       {
         intent: "create_project",
         title: title.trim(),
-        description: description.trim() || `导入自文稿《${selectedFileName || title.trim()}》`,
+        description:
+          description.trim() ||
+          `导入自文稿《${selectedFileName || title.trim()}》`,
         content: content.trim(),
         sceneTitle: sceneTitle.trim() || "第一场",
       },
-      { method: "post" }
+      { method: "post" },
     );
 
     onClose();
@@ -149,7 +154,10 @@ export function ImportOriginalModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="flex-1 flex flex-col overflow-hidden space-y-4"
+        >
           <div className="overflow-y-auto pr-1 space-y-4 flex-1">
             {activeMode === "file" ? (
               <div>
@@ -272,4 +280,3 @@ export function ImportOriginalModal({
     </div>
   );
 }
-

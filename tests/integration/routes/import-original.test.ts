@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { projectRepository, manuscriptService } from "../../../server/domain";
 import { action as indexAction } from "../../../app/routes/_index";
-import { action as projectAction, loader as projectLoader } from "../../../app/routes/projects.$projectId";
+import { loader as projectLoader } from "../../../app/routes/projects.$projectId";
+import { action as sceneAction } from "../../../app/routes/api.projects.$projectId.scenes.$sceneId";
+import { action as workbenchAction } from "../../../app/routes/api.projects.$projectId.workbench";
 import { parseUploadedFile } from "../../../app/utils/fileImporter";
 import { extractPlainText } from "../../../shared/manuscript";
 
@@ -11,7 +13,8 @@ describe("E16 — Import Original Text (导入原文) Across Workspace and Workb
   });
 
   it("creates a new project with imported original content and baseline revision via workspace action", async () => {
-    const rawManuscript = "雪落无声。庭院里的老槐树已落尽了叶子。\n\n他推开木门，寒气扑面而来。";
+    const rawManuscript =
+      "雪落无声。庭院里的老槐树已落尽了叶子。\n\n他推开木门，寒气扑面而来。";
     const form = new FormData();
     form.append("intent", "create_project");
     form.append("title", "冬日纪事");
@@ -41,15 +44,23 @@ describe("E16 — Import Original Text (导入原文) Across Workspace and Workb
     expect(scenes[0].content).toBe(rawManuscript);
     expect(scenes[0].characterCount).toBe(rawManuscript.length);
 
-    const rev = await manuscriptService.getLatestSceneRevision(scenes[0].id, projectId);
+    const rev = await manuscriptService.getLatestSceneRevision(
+      scenes[0].id,
+      projectId,
+    );
     expect(rev).toBeDefined();
     expect(rev?.revisionNumber).toBe(1);
     expect(rev?.content).toBe(rawManuscript);
   });
 
   it("imports original content to overwrite/fill existing scene in workbench action", async () => {
-    const project = await projectRepository.createProject({ title: "Workbench Import Project" });
-    const manuscript = await projectRepository.createManuscript({ projectId: project.id, title: "正文卷" });
+    const project = await projectRepository.createProject({
+      title: "Workbench Import Project",
+    });
+    const manuscript = await projectRepository.createManuscript({
+      projectId: project.id,
+      title: "正文卷",
+    });
     const scene = await projectRepository.createScene({
       manuscriptId: manuscript.id,
       projectId: project.id,
@@ -57,9 +68,11 @@ describe("E16 — Import Original Text (导入原文) Across Workspace and Workb
       content: "",
     });
 
-    const importedText = "夜色渐浓，城市在雨雾中模糊了轮廓。\n\n钟声自远方传来。";
+    const importedText =
+      "夜色渐浓，城市在雨雾中模糊了轮廓。\n\n钟声自远方传来。";
     const form = new FormData();
-    form.append("intent", "save_scene_revision");
+    form.append("intent", "save");
+    form.append("expectedBaseRevisionId", scene.currentRevisionId!);
     form.append("sceneId", scene.id);
     form.append("title", "第一章：夜色");
     form.append("content", importedText);
@@ -70,22 +83,40 @@ describe("E16 — Import Original Text (导入原文) Across Workspace and Workb
       body: form,
     });
 
-    const res = await projectAction({ request: req, params: { projectId: project.id } });
+    const res = await sceneAction({
+      request: new Request(req.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(form)),
+      }),
+      params: { projectId: project.id, sceneId: scene.id },
+    });
     expect((res as any).success).toBe(true);
 
-    const updatedScene = await manuscriptService.getSceneById(scene.id, project.id);
+    const updatedScene = await manuscriptService.getSceneById(
+      scene.id,
+      project.id,
+    );
     expect(updatedScene?.title).toBe("第一章：夜色");
     expect(updatedScene?.content).toBe(importedText);
     expect(updatedScene?.characterCount).toBe(importedText.length);
 
-    const latestRev = await manuscriptService.getLatestSceneRevision(scene.id, project.id);
+    const latestRev = await manuscriptService.getLatestSceneRevision(
+      scene.id,
+      project.id,
+    );
     expect(latestRev?.revisionNumber).toBe(2);
     expect(latestRev?.description).toBe("导入原文: 夜色");
   });
 
   it("imports original content as a new scene in workbench action", async () => {
-    const project = await projectRepository.createProject({ title: "Multi Scene Project" });
-    const manuscript = await projectRepository.createManuscript({ projectId: project.id, title: "正文第一卷" });
+    const project = await projectRepository.createProject({
+      title: "Multi Scene Project",
+    });
+    const manuscript = await projectRepository.createManuscript({
+      projectId: project.id,
+      title: "正文第一卷",
+    });
     await projectRepository.createScene({
       manuscriptId: manuscript.id,
       projectId: project.id,
@@ -96,7 +127,7 @@ describe("E16 — Import Original Text (导入原文) Across Workspace and Workb
 
     const newSceneText = "第二场的正文内容。晨光熹微。";
     const form = new FormData();
-    form.append("intent", "create_scene");
+    form.append("intent", "create_chapter");
     form.append("manuscriptId", manuscript.id);
     form.append("title", "第二场：破晓");
     form.append("content", newSceneText);
@@ -107,7 +138,14 @@ describe("E16 — Import Original Text (导入原文) Across Workspace and Workb
       body: form,
     });
 
-    const res = await projectAction({ request: req, params: { projectId: project.id } });
+    const res = await workbenchAction({
+      request: new Request(req.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(form)),
+      }),
+      params: { projectId: project.id },
+    });
     expect((res as any).success).toBe(true);
     expect((res as any).scene.title).toBe("第二场：破晓");
     expect((res as any).scene.content).toBe(newSceneText);
@@ -119,9 +157,11 @@ describe("E16 — Import Original Text (导入原文) Across Workspace and Workb
 
   it("handles parseUploadedFile and creates a project with the parsed manuscript", async () => {
     const file = new File(
-      ["《边城》\n\n由四川过湖南去，靠东有一条官路。这官路将到湖南边境，走到一个名唤“茶峒”的小山城时，有一小溪。"],
+      [
+        "《边城》\n\n由四川过湖南去，靠东有一条官路。这官路将到湖南边境，走到一个名唤“茶峒”的小山城时，有一小溪。",
+      ],
       "边城.txt",
-      { type: "text/plain" }
+      { type: "text/plain" },
     );
 
     const parsed = await parseUploadedFile(file);
@@ -150,4 +190,3 @@ describe("E16 — Import Original Text (导入原文) Across Workspace and Workb
     expect(extractPlainText(loaderData.scenes[0].content)).toContain("茶峒");
   });
 });
-

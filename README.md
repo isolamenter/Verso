@@ -149,7 +149,7 @@ Requires **Node.js 24+** and a running **PostgreSQL 17** instance with `pgvector
 
 * **Strict Server-Side Key Management**: API keys never reach the browser bundle or client runtime.
 * **Loopback-Only Guard**: Verso refuses to bind to `0.0.0.0` or public IPs unless explicitly configured via `VERSO_CONTAINER=true` (inside container networks) or `VERSO_ALLOW_REMOTE=true`.
-* **Zero Telemetry**: All manuscripts and notes remain entirely on your local machine or self-hosted server.
+* **Local storage, explicit model processing**: Manuscripts, versions and original assets are stored locally. Assistant requests send your prompt, text within the agreed scope and allowed references to the configured model endpoint. Asset processing may send the full original file. The workbench shows the endpoint and asks for confirmation on first use or endpoint changes. Provider retention and training use depend on that provider’s terms.
 
 ---
 

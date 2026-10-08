@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./typography.css";
+@import "./studio.css";
 
 /* Class-based dark mode — the "ink" paper theme adds `.dark` on the app root. */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -58,6 +59,7 @@
 /* Surface the tokens as Tailwind color utilities (bg-paper, text-ink, …). */
 @theme inline {
   --color-paper: var(--paper);
+  --color-paper-light: var(--paper-raise);
   --color-paper-raise: var(--paper-raise);
   --color-paper-sunken: var(--paper-sunken);
   --color-ink: var(--ink);
@@ -85,7 +87,7 @@
     background-color: var(--paper);
     color: var(--ink);
     min-height: 100vh;
-    overflow: hidden;
+    overflow-x: hidden;
     font-feature-settings: 'palt' 1;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;

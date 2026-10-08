@@ -81,7 +81,8 @@ describe("E13 — Change Set Review Experience", () => {
 
     const partialReq = new Request("http://127.0.0.1:4173/api/projects/p/changesets", {
       method: "POST",
-      body: partialForm,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intent: "apply_partial", changeSetId: changeSet.id, operationIds: [operations[0].id] }),
     });
 
     const partialResult = (await changesetsAction({
@@ -96,7 +97,7 @@ describe("E13 — Change Set Review Experience", () => {
     expect(updatedScene?.content).toContain("画船听雨眠。"); // op 1 was untouched
 
     // 3. Create another ChangeSet to test Reject action
-    const { changeSet: rejectCs } = await changeSetService.createChangeSetWithOperations(
+    const { changeSet: rejectCs, operations: rejectOps } = await changeSetService.createChangeSetWithOperations(
       {
         projectId: project.id,
         title: "将被拒绝的提案",
@@ -119,7 +120,8 @@ describe("E13 — Change Set Review Experience", () => {
 
     const rejectReq = new Request("http://127.0.0.1:4173/api/projects/p/changesets", {
       method: "POST",
-      body: rejectForm,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intent: "review", changeSetId: rejectCs.id, operationId: rejectOps[0].id, decision: "retained", feedback: "保留原文" }),
     });
 
     const rejectResult = (await changesetsAction({
@@ -128,8 +130,8 @@ describe("E13 — Change Set Review Experience", () => {
     })) as { success: boolean };
     expect(rejectResult.success).toBe(true);
 
-    const rejectedRecord = await changeSetRepository.getChangeSetById(rejectCs.id);
-    expect(rejectedRecord?.status).toBe("rejected");
+    const reviews = await changeSetRepository.listReviewsByChangeSet(rejectCs.id);
+    expect(reviews[0].decision).toBe("retained");
   });
 });
 

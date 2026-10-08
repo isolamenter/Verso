@@ -1,0 +1,1323 @@
+/* Verso's document is the visual centre; a red margin marks the author's
+   current working position. Controls use sans-serif, the work uses Songti. */
+.studio {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  font:
+    13px/1.55 -apple-system,
+    BlinkMacSystemFont,
+    "PingFang SC",
+    "Microsoft YaHei",
+    sans-serif;
+}
+.studio *,
+.studio-dialog * {
+  box-sizing: border-box;
+}
+.studio button,
+.studio-dialog button {
+  cursor: pointer;
+}
+.studio button:disabled,
+.studio-dialog button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.studio-header {
+  height: 66px;
+  padding: 0 24px;
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.studio-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+.studio-logo {
+  font:
+    italic 25px/1 "EB Garamond",
+    Georgia,
+    serif;
+  letter-spacing: -1px;
+}
+.studio-brand-rule {
+  height: 22px;
+  width: 1px;
+  background: var(--line-strong);
+}
+.studio-brand h1 {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-mode-tabs {
+  display: flex;
+  height: 100%;
+  align-items: stretch;
+  gap: 18px;
+}
+.studio-mode-tabs button {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  position: relative;
+  color: var(--ink-muted);
+  padding: 0 4px;
+}
+.studio-mode-tabs button[aria-current] {
+  color: var(--ink);
+}
+.studio-mode-tabs button[aria-current]::after {
+  content: "";
+  position: absolute;
+  height: 2px;
+  background: var(--cinnabar);
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+.studio-header > .studio-actions {
+  flex: 1;
+  justify-content: flex-end;
+}
+.studio-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.studio-button,
+.studio-icon-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  padding: 6px 11px;
+  min-height: 34px;
+  font-size: 12px;
+  color: var(--ink);
+  background: transparent;
+  text-decoration: none;
+}
+.studio-icon-button {
+  width: 34px;
+  padding: 7px;
+  border-color: transparent;
+  flex-shrink: 0;
+}
+.studio-button:hover,
+.studio-icon-button:hover {
+  background: var(--paper-raise);
+}
+.studio-primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+.studio-primary:hover {
+  background: var(--ink-muted);
+  color: var(--paper);
+}
+.studio-button.is-active {
+  border-color: var(--cinnabar);
+  color: var(--cinnabar);
+}
+.studio-subheader {
+  height: 49px;
+  padding: 0 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.studio-subheader small {
+  color: var(--ink-muted);
+  margin-left: 8px;
+}
+.studio-layout {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.studio-directory {
+  width: 218px;
+  flex-shrink: 0;
+  display: none;
+  flex-direction: column;
+  background: var(--paper-raise);
+  border-right: 1px solid var(--line);
+  min-height: 0;
+}
+.studio-directory-open .studio-directory {
+  display: flex;
+}
+.studio-pane-heading {
+  padding: 15px 18px;
+  min-height: 57px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.studio-pane-heading h2 {
+  font-weight: 500;
+  font-size: 13px;
+}
+.studio-directory-search {
+  padding: 10px 16px;
+}
+.studio input:not([type="checkbox"]),
+.studio select,
+.studio textarea,
+.studio-dialog input:not([type="checkbox"]),
+.studio-dialog select,
+.studio-dialog textarea {
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font: inherit;
+  min-width: 0;
+  max-width: 100%;
+}
+.studio input::placeholder,
+.studio textarea::placeholder,
+.studio-dialog input::placeholder {
+  color: var(--ink-muted);
+}
+.studio-directory-search input {
+  width: 100%;
+  font-size: 12px;
+}
+.studio-directory-tree {
+  overflow: auto;
+  flex: 1;
+  padding: 6px 0 20px;
+}
+.studio-manuscript-group {
+  margin-bottom: 22px;
+}
+.studio-manuscript-group h3 {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 8px 20px;
+}
+.studio-manuscript-group button {
+  width: 100%;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding: 10px 18px;
+  text-align: left;
+  border-left: 2px solid transparent;
+}
+.studio-manuscript-group button > span {
+  color: var(--ink-muted);
+  font-size: 11px;
+  width: 18px;
+  flex-shrink: 0;
+}
+.studio-manuscript-group button strong {
+  font-weight: 400;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.studio-manuscript-group button small {
+  color: var(--ink-muted);
+  font-size: 10px;
+}
+.studio-manuscript-group button.is-active {
+  border-left-color: var(--cinnabar);
+  background: var(--paper);
+}
+.studio-manuscript-group button:hover {
+  background: var(--paper);
+}
+.studio-directory-footer {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 18px 18px;
+  border-top: 1px solid var(--line-strong);
+  gap: 3px;
+}
+.studio-directory-footer button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 7px 3px;
+  color: var(--ink-muted);
+}
+.studio-directory-footer button:hover,
+.studio-directory-footer button.is-active {
+  color: var(--cinnabar);
+}
+.studio-document-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.studio-editor {
+  flex: 1;
+  min-width: 0;
+}
+.studio-editor-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--paper);
+  padding: 11px 22px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+.studio-editor-toolbar .studio-actions {
+  gap: 1px;
+}
+.studio-editor-toolbar .studio-button {
+  margin-left: 7px;
+}
+.studio-page {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding: 42px clamp(22px, 5vw, 68px) 100px;
+}
+.studio-page-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+.studio-page-heading h2 {
+  font:
+    500 27px/1.5 "Noto Serif SC",
+    "Songti SC",
+    Georgia,
+    serif;
+  overflow-wrap: anywhere;
+}
+.studio-page-heading > span {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+.studio-prose,
+.studio-continuous-prose {
+  font:
+    400 19px/2 "Noto Serif SC",
+    "Songti SC",
+    SimSun,
+    Georgia,
+    serif;
+  letter-spacing: 0.01em;
+  min-height: 55vh;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.studio-prose p {
+  line-height: 2;
+  letter-spacing: 0.01em;
+  text-align: left;
+  margin: 0 0 1.2em;
+}
+.studio-prose h2 {
+  font-size: 1.25em;
+}
+.studio-prose ul,
+.studio-prose ol {
+  padding-left: 1.5em;
+  list-style: revert;
+}
+.studio-prose li p {
+  margin-bottom: 0.3em;
+}
+.studio-poetry .studio-prose p {
+  margin-bottom: 1.6em;
+  line-height: 1.85;
+  letter-spacing: 0;
+}
+.studio-poetry .studio-continuous-prose {
+  line-height: 1.85;
+  letter-spacing: 0;
+}
+.studio-located {
+  outline: 1px solid var(--cinnabar);
+  outline-offset: 10px;
+  background: var(--cinnabar-soft);
+}
+.studio-right-pane {
+  width: 390px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--line);
+  display: none;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--paper);
+}
+.studio-assistant-open .studio-right-pane {
+  display: flex;
+}
+.studio-right-tabs {
+  display: flex;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line);
+  height: 45px;
+  gap: 22px;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+.studio-right-tabs button {
+  border-bottom: 2px solid transparent;
+  color: var(--ink-muted);
+}
+.studio-right-tabs button.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--cinnabar);
+}
+.studio-right-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.studio-right-content[hidden] {
+  display: none;
+}
+.studio-agent {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.studio-agent .studio-pane-heading {
+  border-bottom: 0;
+}
+.studio-thread {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 20px 24px;
+  overscroll-behavior: contain;
+}
+.studio-agent-empty {
+  padding: 35px 6px;
+}
+.studio-assistant-mark {
+  font:
+    28px/1.5 Georgia,
+    serif;
+  color: var(--cinnabar);
+}
+.studio-agent-empty h3 {
+  font:
+    500 21px/1.5 "Noto Serif SC",
+    "Songti SC",
+    Georgia,
+    serif;
+  margin: 12px 0;
+}
+.studio-agent-empty p {
+  color: var(--ink-muted);
+  margin-bottom: 20px;
+  line-height: 1.9;
+}
+.studio-message {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+.studio-message-author {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-bottom: 10px;
+}
+.studio-message-author span {
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-message-text {
+  font:
+    14px/1.9 "Noto Serif SC",
+    "Songti SC",
+    Georgia,
+    serif;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.studio-message-user {
+  padding: 16px;
+  border: 0;
+  background: var(--paper-raise);
+  border-radius: 5px;
+  margin: 12px 0;
+}
+.studio-message-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+.studio-message-actions button:hover {
+  color: var(--cinnabar);
+}
+.studio-receipt,
+.studio-coverage {
+  margin-top: 12px;
+  color: var(--ink-muted);
+  font-size: 11px;
+  line-height: 1.8;
+}
+.studio-receipt summary,
+.studio-coverage summary {
+  cursor: pointer;
+}
+.studio-coverage {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 10px;
+}
+.studio-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--cinnabar);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-align: left;
+  margin: 4px 12px 4px 0;
+}
+.studio-composer {
+  border-top: 1px solid var(--line);
+  padding: 15px 18px 18px;
+  flex-shrink: 0;
+}
+.studio-task-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.studio-task-row label {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+.studio-task-row select {
+  border: 0;
+  padding: 5px 0;
+  background: transparent;
+  font-size: 12px;
+}
+.studio-target-caption {
+  color: var(--ink-muted);
+  font-size: 11px;
+  padding: 2px 0 9px;
+}
+.studio-composer textarea {
+  width: 100%;
+  resize: vertical;
+  max-height: 180px;
+  min-height: 85px;
+  font-size: 13px;
+  line-height: 1.75;
+}
+.studio-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 9px;
+  gap: 10px;
+}
+.studio-processing-link {
+  font-size: 10px;
+  color: var(--ink-muted);
+  max-width: 65%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-attached {
+  background: var(--paper-raise);
+  border-left: 2px solid var(--cinnabar);
+  margin: 0 0 10px;
+  padding: 9px;
+  display: flex;
+  font-size: 11px;
+}
+.studio-attached p {
+  max-height: 65px;
+  overflow: auto;
+  flex: 1;
+  white-space: pre-wrap;
+}
+.studio-task-options {
+  border-top: 1px solid var(--line);
+  margin-bottom: 12px;
+  padding-top: 10px;
+  max-height: 260px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 11px;
+}
+.studio-task-options label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.studio-checkbox {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.studio-checkbox input,
+.studio-proposal input[type="checkbox"] {
+  accent-color: var(--cinnabar);
+  width: 15px;
+  height: 15px;
+}
+.studio-help {
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.85;
+  margin: 8px 0 16px;
+}
+.studio-note {
+  color: var(--ink-muted);
+  font-size: 11px;
+  padding: 8px 18px;
+}
+.studio-alert,
+.studio-shell-alert {
+  color: var(--cinnabar-strong);
+  background: var(--cinnabar-soft);
+  border-left: 2px solid var(--cinnabar);
+  padding: 12px 16px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.studio-shell-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.studio-alert .studio-icon-button {
+  float: right;
+}
+.studio-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px;
+}
+.studio-search input {
+  flex: 1;
+  width: 120px;
+}
+.studio-historical-banner {
+  padding: 12px 24px;
+  background: var(--paper-raise);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+}
+.studio-historical-banner button {
+  color: var(--cinnabar);
+}
+.studio-empty {
+  padding: 50px 24px;
+  text-align: center;
+}
+.studio-empty h2,
+.studio-empty h3 {
+  font:
+    500 21px/1.6 "Noto Serif SC",
+    "Songti SC",
+    Georgia,
+    serif;
+  margin-bottom: 15px;
+}
+.studio-empty p {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+.studio-dialog {
+  width: min(540px, calc(100vw - 28px));
+  padding: 0;
+  max-height: calc(100dvh - 60px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 24px 100px #26221c30;
+  margin: auto;
+  font:
+    13px/1.7 -apple-system,
+    BlinkMacSystemFont,
+    "PingFang SC",
+    sans-serif;
+}
+.studio-dialog::backdrop {
+  background: #26221c65;
+}
+.studio-dialog-wide {
+  width: min(900px, calc(100vw - 28px));
+}
+.studio-dialog > header {
+  padding: 18px 24px;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  z-index: 3;
+}
+.studio-dialog > header h2 {
+  font:
+    500 21px/1.5 "Noto Serif SC",
+    "Songti SC",
+    Georgia,
+    serif;
+}
+.studio-dialog-body {
+  padding: 24px;
+}
+.studio-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.studio-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+}
+.studio-form .studio-button {
+  align-self: flex-start;
+}
+.studio-fields {
+  display: flex;
+  gap: 12px;
+}
+.studio-fields > label {
+  flex: 1;
+  min-width: 0;
+}
+.studio-list-item {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+}
+.studio-list-item h3 {
+  font-size: 15px;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+.studio-list-item .studio-actions {
+  margin-top: 14px;
+}
+.studio-inset {
+  background: var(--paper-raise);
+  padding: 20px;
+  border-radius: 6px;
+}
+.studio-history {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 24px;
+  margin-top: 25px;
+}
+.studio-history nav {
+  display: flex;
+  flex-direction: column;
+  max-height: 50vh;
+  overflow: auto;
+}
+.studio-history nav button {
+  text-align: left;
+  padding: 13px 15px;
+  border-left: 2px solid transparent;
+}
+.studio-history nav button.is-active {
+  background: var(--paper-raise);
+  border-color: var(--cinnabar);
+}
+.studio-history nav button strong,
+.studio-history nav button span,
+.studio-history nav button small {
+  display: block;
+}
+.studio-history small {
+  color: var(--ink-muted);
+  font-size: 10px;
+}
+.studio-history h3 {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.studio-restore {
+  margin-top: 20px;
+}
+.studio-restore p {
+  margin-bottom: 15px;
+}
+.studio-draft-text {
+  width: 100%;
+  font:
+    16px/1.8 "Noto Serif SC",
+    "Songti SC",
+    serif !important;
+}
+.studio-processing-facts {
+  display: grid;
+  grid-template-columns: 85px 1fr;
+  gap: 9px;
+  padding: 18px;
+  background: var(--paper-raise);
+}
+.studio-processing-facts dt {
+  color: var(--ink-muted);
+}
+.studio-processing-facts dd {
+  overflow-wrap: anywhere;
+}
+.studio-structure {
+  padding: 34px;
+  max-width: 1040px;
+  width: 100%;
+  margin: 0 auto;
+}
+.studio-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 15px;
+  margin-bottom: 25px;
+}
+.studio-section-heading h2 {
+  font:
+    500 27px/1.5 "Noto Serif SC",
+    "Songti SC",
+    serif;
+  margin-bottom: 8px;
+}
+.studio-section-heading p {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+.studio-structure-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  border-top: 1px solid var(--line);
+  padding: 20px 12px;
+  border-left: 2px solid transparent;
+}
+.studio-structure-row.is-active {
+  background: var(--paper-raise);
+  border-left-color: var(--cinnabar);
+}
+.studio-structure-row > div {
+  flex: 1;
+}
+.studio-structure-row strong {
+  font-weight: 500;
+}
+.studio-structure-row p {
+  color: var(--ink-muted);
+  font-size: 12px;
+  margin: 6px 0;
+}
+.studio-structure-row small,
+.studio-order {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+.studio-structure-state {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.studio-structure-state em {
+  display: block;
+  color: var(--cinnabar);
+  font-style: normal;
+  margin-top: 5px;
+}
+.studio-structure-form {
+  border-top: 1px solid var(--line);
+  margin-top: 28px;
+  padding-top: 25px;
+}
+.studio-revision-desk {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+.studio-round {
+  padding: 20px;
+}
+.studio-round > header h3 {
+  font:
+    500 20px/1.6 "Noto Serif SC",
+    "Songti SC",
+    serif;
+}
+.studio-round > header p {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: 8px 0 16px;
+}
+.studio-round-rationale {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 12px;
+}
+.studio-proposal {
+  border-top: 1px solid var(--line);
+  padding: 18px 0;
+}
+.studio-proposal-decided {
+  opacity: 0.75;
+}
+.studio-proposal-heading {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.studio-status {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+.studio-decision {
+  margin: 10px 0;
+  border-left: 2px solid var(--line-strong);
+  padding-left: 12px;
+  font-size: 12px;
+}
+.studio-decision-note {
+  width: 100%;
+  font-size: 12px !important;
+  margin: 8px 0;
+}
+.studio-proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+.studio-proposal-actions button:hover {
+  color: var(--cinnabar);
+}
+.studio-round-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.studio-split-preview {
+  font-size: 12px;
+  padding: 12px;
+  background: var(--paper-raise);
+}
+.studio-split-preview p {
+  margin-bottom: 12px;
+}
+.studio-diff {
+  font:
+    14px/1.85 "Noto Serif SC",
+    "Songti SC",
+    serif;
+  overflow-wrap: anywhere;
+}
+.studio-diff section {
+  padding: 10px 12px;
+  border-left: 2px solid var(--line-strong);
+  white-space: pre-wrap;
+  margin: 7px 0;
+}
+.studio-diff section:first-of-type {
+  border-color: var(--cinnabar);
+}
+.studio-diff section:last-of-type {
+  background: var(--paper-raise);
+}
+.studio-diff h4 {
+  font:
+    11px/1.6 -apple-system,
+    "PingFang SC",
+    sans-serif;
+  color: var(--ink-muted);
+  margin-bottom: 5px;
+}
+.studio-focus .studio-directory,
+.studio-focus .studio-right-pane {
+  display: none;
+}
+.studio-continuous .studio-page {
+  border-bottom: 1px solid var(--line-strong);
+}
+.studio-knowledge {
+  flex: 1;
+  padding: 34px;
+  overflow: auto;
+}
+.studio-knowledge-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+.studio-knowledge-item {
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+}
+.studio-knowledge-item h3 {
+  font:
+    500 19px/1.5 "Noto Serif SC",
+    "Songti SC",
+    serif;
+}
+.studio-knowledge-item p {
+  white-space: pre-wrap;
+  margin: 12px 0;
+}
+.studio-knowledge-meta {
+  color: var(--ink-muted);
+  font-size: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.studio-knowledge-conflict {
+  border-left: 2px solid var(--cinnabar);
+  padding: 12px;
+  background: var(--cinnabar-soft);
+  margin: 16px 0;
+}
+@media (max-width: 1200px) {
+  .studio-right-pane {
+    width: 350px;
+  }
+  .studio-directory {
+    width: 185px;
+  }
+  .studio-page {
+    padding-left: 35px;
+    padding-right: 35px;
+  }
+  .studio-header {
+    gap: 16px;
+    padding: 0 16px;
+  }
+}
+@media (max-width: 1000px) {
+  .studio-directory {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 30;
+    box-shadow: 10px 0 30px #26221c18;
+    width: 240px;
+  }
+  .studio-prose {
+    font-size: 18px;
+  }
+  .studio-brand-rule,
+  .studio-logo {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .studio-header {
+    height: auto;
+    min-height: 92px;
+    flex-wrap: wrap;
+    padding: 12px 12px 0;
+    gap: 5px 12px;
+  }
+  .studio-brand {
+    flex: 1;
+    width: auto;
+  }
+  .studio-header > .studio-actions {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+  }
+  .studio-mode-tabs {
+    width: 100%;
+    order: 3;
+    height: 39px;
+    justify-content: center;
+    gap: 38px;
+  }
+  .studio-subheader {
+    padding: 0 10px;
+  }
+  .studio-subheader small {
+    display: none;
+  }
+  .studio-subheader .studio-button > span {
+    display: none;
+  }
+  .studio-subheader > .studio-actions:first-child {
+    min-width: 0;
+    flex-wrap: nowrap;
+  }
+  .studio-subheader > .studio-actions:first-child > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .studio-directory {
+    top: 0;
+  }
+  .studio-right-pane {
+    position: absolute;
+    z-index: 25;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: min(390px, calc(100vw - 38px));
+    box-shadow: -12px 0 35px #26221c22;
+  }
+  .studio-page {
+    padding: 30px 23px 90px;
+  }
+  .studio-page-heading h2 {
+    font-size: 24px;
+  }
+  .studio-prose {
+    font-size: 18px;
+  }
+  .studio-editor-toolbar {
+    padding: 10px;
+    flex-wrap: wrap;
+  }
+  .studio-editor-toolbar > .studio-actions {
+    gap: 0;
+  }
+  .studio-icon-button {
+    min-height: 38px;
+    width: 38px;
+  }
+  .studio-structure,
+  .studio-knowledge {
+    padding: 24px 18px;
+  }
+  .studio-history {
+    grid-template-columns: 1fr;
+  }
+  .studio-history nav {
+    max-height: 170px;
+  }
+  .studio-fields {
+    flex-direction: column;
+  }
+  .studio-dialog-body {
+    padding: 20px;
+  }
+}
+.studio-library {
+  font:
+    13px/1.65 -apple-system,
+    "PingFang SC",
+    sans-serif;
+  color: var(--ink);
+}
+.studio-library-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding: 23px max(24px, calc((100vw - 1080px) / 2));
+}
+.studio-library .studio-logo {
+  display: block;
+  font-size: 31px;
+}
+.studio-library-main {
+  width: min(1080px, 100%);
+  padding: 48px 24px 80px;
+  margin: 0 auto;
+}
+.studio-resume {
+  border-left: 3px solid var(--cinnabar);
+  padding: 28px 34px;
+  background: var(--paper-raise);
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 30px;
+  margin-bottom: 50px;
+}
+.studio-resume-copy {
+  flex: 1;
+}
+.studio-resume-copy > p:first-child {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-bottom: 16px;
+}
+.studio-resume h2 {
+  font:
+    500 36px/1.6 "Noto Serif SC",
+    "Songti SC",
+    serif;
+  margin-bottom: 10px;
+}
+.studio-resume-description {
+  color: var(--ink-muted);
+  margin-bottom: 24px;
+  max-width: 44em;
+}
+.studio-resume-spine {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  border-left: 1px solid var(--line-strong);
+  padding-left: 30px;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.studio-project-list > h2 {
+  font-size: 15px;
+  font-weight: 500;
+  margin-bottom: 20px;
+}
+.studio-project-list > h2 span {
+  color: var(--ink-muted);
+  margin-left: 10px;
+  font-size: 12px;
+}
+.studio-project-row {
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 3px;
+}
+.studio-project-row a {
+  font:
+    500 21px/1.6 "Noto Serif SC",
+    "Songti SC",
+    serif;
+}
+.studio-project-row a:hover {
+  color: var(--cinnabar);
+}
+.studio-project-row p {
+  color: var(--ink-muted);
+  margin: 8px 0 12px;
+}
+.studio-project-row small {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+.studio-project-row-end {
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+.studio-project-row-end > .studio-actions {
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+@media (max-width: 600px) {
+  .studio-library-header {
+    padding: 17px;
+  }
+  .studio-library-main {
+    padding: 28px 18px;
+  }
+  .studio-resume {
+    padding: 24px 22px;
+    gap: 0;
+  }
+  .studio-resume h2 {
+    font-size: 29px;
+  }
+  .studio-resume-spine {
+    display: none;
+  }
+  .studio-library-header .studio-button {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  .studio-project-row {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .studio-project-row-end {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .studio-project-row-end > .studio-actions {
+    margin: 0;
+  }
+}
+.studio-conflict-review {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.studio-conflict-review details {
+  margin-bottom: 16px;
+}
+.studio-conflict-review summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--cinnabar);
+}

@@ -1,4 +1,5 @@
-import { assetService } from "../../server/domain";
+import { modelProcessingInfo } from "../../server/agent/context/task-context";
+import { projectRepository, assetService } from "../../server/domain";
 
 export async function loader({
   params,
@@ -27,6 +28,8 @@ export async function action({
   }
 
   try {
+    const settings = await projectRepository.getProjectSettings(projectId);
+    if (settings?.metadata.confirmedEndpoint !== modelProcessingInfo().endpoint) return Response.json({ error: "请先确认模型处理方式" }, { status: 409 });
     const formData = await request.formData();
     const file = formData.get("file") as File;
 

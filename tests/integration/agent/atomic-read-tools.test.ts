@@ -107,15 +107,15 @@ describe("E11 — Atomic Read Tools and Context Receipt Skeleton", () => {
 
     // 1. Reading knowledge node is blocked
     const knRes = await readToolsEngine.readResource({ type: "knowledge", id: node.id }, coldCtx);
-    expect((knRes as any).error).toContain("Cold Reader");
+    expect((knRes as any).error).toContain("本轮不允许");
 
     // 2. Searching knowledge is blocked
     const searchKn = await readToolsEngine.searchKnowledge({ query: "Secret", limit: 10 }, coldCtx);
-    expect((searchKn as any).error).toContain("Cold Reader");
+    expect((searchKn as any).error).toContain("本轮不允许");
 
     // 3. Querying memory is blocked
     const memRes = await readToolsEngine.queryMemory({ scope: "all", limit: 10 }, coldCtx);
-    expect((memRes as any).error).toContain("Cold Reader");
+    expect((memRes as any).error).toContain("本轮不允许");
 
     // 4. Context receipt remains clean of blocked items
     const recorded = receiptBuilder.getRecordedItems();

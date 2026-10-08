@@ -18,16 +18,6 @@ export async function loader({ request }: { request: Request }) {
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
-  {
-    rel: "preconnect",
-    href: "https://fonts.gstatic.com",
-    crossOrigin: "anonymous",
-  },
-  {
-    rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..700;1,400..700&family=Noto+Serif+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
-  },
 ];
 
 export function meta(): Route.MetaDescriptors {
@@ -50,9 +40,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body className="bg-paper text-ink antialiased">
-        <I18nProvider initialLocale={locale}>
-          {children}
-        </I18nProvider>
+        <I18nProvider initialLocale={locale}>{children}</I18nProvider>
         <ScrollRestoration />
         <Scripts />
       </body>

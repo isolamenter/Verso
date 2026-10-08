@@ -36,7 +36,7 @@ describe("E17 — Progressive Skill Runtime and Legacy Feature Conversion", () =
       avoidAreas: ["避免出现任何现代科技词汇", "避免直接说教"],
     });
 
-    expect(systemPrompt).toContain("文学创作助手");
+    expect(systemPrompt).toContain("作者体裁与创作意图");
     expect(systemPrompt).toContain("【用户重点关注】:");
     expect(systemPrompt).toContain("强化雨夜凄清的氛围");
     expect(systemPrompt).toContain("【用户明确回避】:");

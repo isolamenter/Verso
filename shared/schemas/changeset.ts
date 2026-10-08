@@ -42,7 +42,7 @@ export const ChangeOperationStatusEnum = z.enum([
 ]);
 export type ChangeOperationStatus = z.infer<typeof ChangeOperationStatusEnum>;
 
-export const ChangeReviewDecisionEnum = z.enum(["approved", "rejected", "revised"]);
+export const ChangeReviewDecisionEnum = z.enum(["approved", "rejected", "revised", "deferred", "retained"]);
 export type ChangeReviewDecision = z.infer<typeof ChangeReviewDecisionEnum>;
 
 export const ChangeApplyStatusEnum = z.enum(["success", "conflict", "failed", "rolled_back"]);
